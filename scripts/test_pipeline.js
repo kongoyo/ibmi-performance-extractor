@@ -1,7 +1,15 @@
-import { SourceManager } from "../packages/server/dist/public/services.js";
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
+import {
+  SKILL_ROOT,
+  parseArgs,
+  checkNodeVersion,
+  checkPython,
+  loadServices,
+  loadHostConfig,
+  resolveOutputDirs,
+} from "./preflight.js";
 
 // Helper to convert Julian Day of Year to MM/DD (non-leap year)
 function julianToDateStr(julianStr) {
@@ -20,25 +28,23 @@ function julianToDateStr(julianStr) {
 }
 
 async function main() {
-  const hostId = "clark75";
-  const library = "KTB";
-
-  const configPath = path.join("scratch", "hosts_config.json");
-  if (!fs.existsSync(configPath)) {
-    console.error(`❌ Error: hosts_config.json not found.`);
-    process.exit(1);
-  }
-  const allConfigs = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  const hostConfig = allConfigs[hostId];
-
-  if (!hostConfig) {
-    console.error(`❌ Error: Host ${hostId} not configured.`);
-    process.exit(1);
-  }
-
   console.log(`🚀 Starting Optimized Performance Data Extraction Pipeline...`);
-  console.log(`📌 Host: ${hostConfig.host}`);
+
+  console.log(`\n🔍 執行環境事前點檢...`);
+  checkNodeVersion();
+  const pythonCmd = checkPython();
+
+  const args = parseArgs();
+  const { SourceManager } = await loadServices(args);
+  const { hostId, hostConfig, configPath } = loadHostConfig(args.host, args);
+  const library = args.lib || hostConfig.library || "QPFRDATA";
+  const maxDays = args.maxDays ? parseInt(args.maxDays, 10) : (hostConfig.maxDays || 5);
+  const outputDirs = resolveOutputDirs(hostConfig, hostId);
+
+  console.log(`📌 Host: ${hostConfig.host} (id: ${hostId})`);
   console.log(`📌 Library: ${library}`);
+  console.log(`📌 Config: ${configPath}`);
+  console.log(`📌 Output dirs: ${outputDirs.join(", ")}`);
 
   const manager = SourceManager.getInstance();
   await manager.registerSource(hostId, {
@@ -50,11 +56,11 @@ async function main() {
   });
 
   try {
-    // Step 1: Query all partitions (members) of QAPMISUM in KTB
+    // Step 1: Query all partitions (members) of QAPMISUM in the target library
     console.log(`\n🔍 Querying members (partitions) for ${library}.QAPMISUM...`);
     const partitionRes = await manager.executeQuery(hostId, `
-      SELECT TABLE_PARTITION AS PARTITION_NAME 
-      FROM QSYS2.SYSPARTITIONSTAT 
+      SELECT TABLE_PARTITION AS PARTITION_NAME
+      FROM QSYS2.SYSPARTITIONSTAT
       WHERE TABLE_SCHEMA = '${library}' AND TABLE_NAME = 'QAPMISUM'
       ORDER BY PARTITION_NAME DESC
     `);
@@ -67,8 +73,7 @@ async function main() {
       process.exit(1);
     }
 
-    // Limit to latest 5 partitions to avoid chart overcrowding and excessive query time
-    const maxDays = 5;
+    // Limit to latest N partitions to avoid chart overcrowding and excessive query time
     if (partitions.length > maxDays) {
       console.log(`Limiting extraction to the latest ${maxDays} partitions.`);
       partitions = partitions.slice(0, maxDays);
@@ -124,7 +129,7 @@ async function main() {
 
       console.log(`Querying 14-column Interval Summary...`);
       const misumRes = await manager.executeQuery(hostId, `
-        SELECT 
+        SELECT
           m.INTNUM,
           SUBSTR(m.DTETIM, 3, 2) CONCAT '/' CONCAT SUBSTR(m.DTETIM, 5, 2) AS "Date",
           SUBSTR(m.DTETIM, 7, 2) CONCAT ':' CONCAT SUBSTR(m.DTETIM, 9, 2) AS "Time",
@@ -157,7 +162,7 @@ async function main() {
       intervals.forEach(r => {
         const intVal = parseInt(r.INTNUM, 10);
         intnumToTime[intVal] = r.Time;
-        
+
         const idx = standardTimes.indexOf(r.Time);
         if (idx !== -1) {
           dataByDate[dateStr].Count[idx] = r.Count || 0;
@@ -173,7 +178,7 @@ async function main() {
       console.log(`Querying Top 10 Jobs for all 96 intervals (Optimized Single Query)...`);
       const jobsQuery = `
         WITH AggregatedJobs AS (
-          SELECT 
+          SELECT
             INTNUM,
             JBNAME,
             JBUSER,
@@ -187,7 +192,7 @@ async function main() {
           GROUP BY INTNUM, JBNAME, JBUSER, JBNBR
         ),
         RankedJobs AS (
-          SELECT 
+          SELECT
             INTNUM,
             TRIM(JBNAME) AS JOB_NAME,
             TRIM(JBUSER) AS USER_NAME,
@@ -204,7 +209,7 @@ async function main() {
             ROW_NUMBER() OVER(PARTITION BY INTNUM ORDER BY TOTAL_TRANS DESC) as trans_rank
           FROM AggregatedJobs
         )
-        SELECT * 
+        SELECT *
         FROM RankedJobs
         WHERE cpu_rank <= 10 OR fault_rank <= 10 OR io_rank <= 10 OR rsp_rank <= 10 OR trans_rank <= 10
       `;
@@ -326,29 +331,27 @@ async function main() {
       peakJobs: peakJobsByDate
     };
 
-    const jsonPath = `scratch/clark75_perf_all.json`;
+    const jsonPath = path.join(outputDirs[0], `${hostId}_perf_all.json`);
     fs.writeFileSync(jsonPath, JSON.stringify(payload, null, 2));
     console.log(`\n✔ Saved consolidated performance JSON payload to: ${jsonPath}`);
 
-    // Step 4: Run generate_report.py
+    // Step 4: Run generate_report.py (the reporter script itself travels with the skill)
     const hostUpper = hostId.toUpperCase();
     const libUpper = library.toUpperCase();
-    const localHtmlPath = `scratch/${hostUpper}_${libUpper}_Performance_Report.html`;
-    const downloadsHtmlPath = `C:/Users/User/Downloads/${hostUpper}_${libUpper}_Performance_Report.html`;
-    
-    console.log(`\n📊 Generating HTML Report...`);
-    const runReporter = (outPath) => {
-      const pythonCmd = `python scratch/generate_report.py --input ${jsonPath} --output "${outPath}" --host ${hostId} --lib ${library}`;
-      console.log(`Executing: ${pythonCmd}`);
-      execSync(pythonCmd, { encoding: "utf8" });
-    };
+    const reporterScript = path.join(SKILL_ROOT, "scripts", "generate_report.py");
 
-    runReporter(localHtmlPath);
-    runReporter(downloadsHtmlPath);
-    
+    console.log(`\n📊 Generating HTML Report...`);
+    const generatedPaths = [];
+    for (const dir of outputDirs) {
+      const outPath = path.join(dir, `${hostUpper}_${libUpper}_Performance_Report.html`);
+      const cmd = `${pythonCmd} "${reporterScript}" --input "${jsonPath}" --output "${outPath}" --host ${hostId} --lib ${library}`;
+      console.log(`Executing: ${cmd}`);
+      execSync(cmd, { encoding: "utf8" });
+      generatedPaths.push(outPath);
+    }
+
     console.log(`\n🎉 Success!`);
-    console.log(`📄 Local HTML Report: ${localHtmlPath}`);
-    console.log(`📄 Downloads HTML Report: ${downloadsHtmlPath}`);
+    generatedPaths.forEach(p => console.log(`📄 Report: ${p}`));
 
   } finally {
     await manager.shutdown();

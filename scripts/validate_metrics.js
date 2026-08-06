@@ -1,6 +1,9 @@
-import { SourceManager } from "../packages/server/dist/public/services.js";
-import fs from "fs";
-import path from "path";
+import {
+  parseArgs,
+  checkNodeVersion,
+  loadServices,
+  loadHostConfig,
+} from "./preflight.js";
 
 // Color codes for output formatting
 const green = "\x1b[32m";
@@ -10,6 +13,10 @@ const yellow = "\x1b[33m";
 
 // Benchmark data from 07/13 Green Screen Screenshot (05:15 to 07:30)
 // Note: faults column is Usr Pool faults per second (Pool Fault Usr)
+// These expected values are a fixed snapshot of one library's historical
+// data (the KTB benchmark fixture) — they are the ground truth being
+// tested against, so they intentionally stay hardcoded regardless of
+// which --lib is passed in.
 const benchmarkIntervals = [
   { intnum: 21, time: "05:15", count: 316,  rsp: 0.21, tot: 87, faults: 1850 },
   { intnum: 22, time: "05:30", count: 586,  rsp: 0.02, tot: 50, faults: 2596 },
@@ -24,10 +31,13 @@ const benchmarkIntervals = [
 ];
 
 async function main() {
-  const hostId = "clark75";
-  const configPath = path.join("scratch", "hosts_config.json");
-  const allConfigs = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  const hostConfig = allConfigs[hostId];
+  console.log(`🔍 執行環境事前點檢...`);
+  checkNodeVersion();
+
+  const args = parseArgs();
+  const { SourceManager } = await loadServices(args);
+  const { hostId, hostConfig } = loadHostConfig(args.host, args);
+  const library = args.lib || hostConfig.library || "KTB";
 
   const manager = SourceManager.getInstance();
   await manager.registerSource(hostId, {
@@ -39,6 +49,7 @@ async function main() {
   });
 
   console.log(`\n🔍 ${yellow}Starting Automated Performance Metric Validation Suite...${reset}\n`);
+  console.log(`📌 Host: ${hostConfig.host} (id: ${hostId})  Library: ${library}\n`);
   let passedTests = 0;
   let failedTests = 0;
 
@@ -58,11 +69,11 @@ async function main() {
     // Test Area 1: Comprehensive Multi-Interval Alignments (07/13 05:15 ~ 07:30)
     // ----------------------------------------------------
     console.log(`📋 [Test Area 1] 07/13 Multi-Interval Alignments (Green Screen Benchmark)`);
-    await manager.executeQuery(hostId, `CREATE OR REPLACE ALIAS QTEMP.V_QAPMISUM_194 FOR KTB.QAPMISUM (Q194000017)`);
-    await manager.executeQuery(hostId, `CREATE OR REPLACE ALIAS QTEMP.V_QAPMSYSTEM_194 FOR KTB.QAPMSYSTEM (Q194000017)`);
+    await manager.executeQuery(hostId, `CREATE OR REPLACE ALIAS QTEMP.V_QAPMISUM_194 FOR ${library}.QAPMISUM (Q194000017)`);
+    await manager.executeQuery(hostId, `CREATE OR REPLACE ALIAS QTEMP.V_QAPMSYSTEM_194 FOR ${library}.QAPMSYSTEM (Q194000017)`);
 
     const query = `
-      SELECT 
+      SELECT
         m.INTNUM,
         m.JBNTR AS COUNT,
         CASE WHEN m.JBNTR > 0 THEN DECIMAL(m.JBRSP / (m.JBNTR * 1000.0), 5, 2) ELSE 0.00 END AS RSP,
@@ -75,7 +86,7 @@ async function main() {
     `;
 
     const res = await manager.executeQuery(hostId, query);
-    
+
     for (const expected of benchmarkIntervals) {
       const actual = res.data.find(r => r.INTNUM === expected.intnum);
       if (!actual) {
@@ -100,10 +111,10 @@ async function main() {
     // Target: 07/13 12:45 (INTNUM 51) => Job HN040130A => Expected Response Time = 14271.93 seconds
     // ----------------------------------------------------
     console.log(`\n📋 [Test Area 2] Interactive Transaction Response Time Calculations`);
-    await manager.executeQuery(hostId, `CREATE OR REPLACE ALIAS QTEMP.V_QAPMJOBL_194 FOR KTB.QAPMJOBL (Q194000017)`);
+    await manager.executeQuery(hostId, `CREATE OR REPLACE ALIAS QTEMP.V_QAPMJOBL_194 FOR ${library}.QAPMJOBL (Q194000017)`);
 
     const rcaRes = await manager.executeQuery(hostId, `
-      SELECT 
+      SELECT
         JBNAME,
         JBNTR,
         JBRSP,
@@ -124,10 +135,10 @@ async function main() {
     // Target: 07/16 11:00 (INTNUM 44) => Job CMPFILDTA (552601) => Expected total reads (JBADBR + JBDBR) = 87943713
     // ----------------------------------------------------
     console.log(`\n📋 [Test Area 3] MIMIX CMPFILDTA I/O Storm Counts`);
-    await manager.executeQuery(hostId, `CREATE OR REPLACE ALIAS QTEMP.V_QAPMJOBL_197 FOR KTB.QAPMJOBL (Q197000038)`);
+    await manager.executeQuery(hostId, `CREATE OR REPLACE ALIAS QTEMP.V_QAPMJOBL_197 FOR ${library}.QAPMJOBL (Q197000038)`);
 
     const ioRes = await manager.executeQuery(hostId, `
-      SELECT 
+      SELECT
         SUM(JBADBR + JBDBR) AS TOTAL_READS
       FROM QTEMP.V_QAPMJOBL_197
       WHERE INTNUM = 44 AND JBNAME = 'CMPFILDTA' AND JBNBR = '552601'
@@ -146,7 +157,7 @@ async function main() {
     // ----------------------------------------------------
     console.log(`\n📋 [Test Area 4] Job-Level Aggregation Deduplication Check`);
     const aggRes = await manager.executeQuery(hostId, `
-      SELECT 
+      SELECT
         JBNAME, JBUSER, JBNBR, COUNT(*) AS THREAD_COUNT
       FROM QTEMP.V_QAPMJOBL_197
       WHERE INTNUM = 44 AND JBNAME = 'CMPFILDTA' AND JBNBR = '552601'

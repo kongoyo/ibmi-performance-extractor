@@ -24,10 +24,10 @@ description: Extract IBM i Collection Services performance data from custom libr
 
 ## 2. 憑證與設定檔管理 (Credential Profiles)
 
-為了避免明文憑證寫死在程式碼中，連線資料優先透過以下兩種方式載入：
+為了避免明文憑證寫死在程式碼中，連線資料優先透過以下兩種方式載入。**此設定檔隨 skill 本身攜帶/分享**，不寫入目標專案：所有腳本一律以自己的檔案位置（`scripts/` 的上一層，即 skill 根目錄）解析 `scratch/hosts_config.json`，與執行時的工作目錄（cwd）無關，因此無論 skill 是獨立資料夾，還是被放進某專案的 `.agents/skills/ibmi-performance-extractor/`，都會讀到同一份設定。
 
-### 2.1 主機設定檔 `scratch/hosts_config.json`
-在 `scratch/` 下建立此檔並登錄各主機連線設定，且在版控中忽略該檔案的實際內容：
+### 2.1 主機設定檔 `<skill 根目錄>/scratch/hosts_config.json`
+在 skill 根目錄下的 `scratch/` 建立此檔並登錄各主機連線設定，且在版控中忽略該檔案的實際內容（已在 `.gitignore` 中排除整個 `scratch/`）：
 ```json
 {
   "<your_host_id_1>": {
@@ -35,40 +35,51 @@ description: Extract IBM i Collection Services performance data from custom libr
     "port": 8076,
     "user": "<YOUR_IBMI_USER_PROFILE>",
     "password": "<YOUR_IBMI_PASSWORD>",
-    "ignore-unauthorized": true
-  },
-  "<your_host_id_2>": {
-    "host": "<YOUR_IBMI_HOST_IP_OR_DNS>",
-    "port": 8076,
-    "user": "<YOUR_IBMI_USER_PROFILE>",
-    "password": "<YOUR_IBMI_PASSWORD>",
-    "ignore-unauthorized": true
+    "ignore-unauthorized": true,
+    "library": "<預設 Library，例如 QPFRDATA>",
+    "maxDays": 5,
+    "outputDirs": ["scratch"]
   }
 }
 ```
+欄位說明：
+- `library`：未帶 `--lib` 參數時使用的預設 Library。
+- `maxDays`：未帶 `--maxDays` 參數時，最多擷取的成員（天）數，預設 5。
+- `outputDirs`：報表與 JSON payload 的輸出目錄清單（可多個）。相對路徑會解析到 skill 根目錄下（預設 `["outputs/{host}/"]`）；絕對路徑（如 `"C:/Users/<you>/Downloads"`）會原樣使用。**輸出位置一律由此設定，程式碼中不得寫死任何磁碟路徑。**
+  路徑字串可用以下 token，執行時會自動代換：
+  - `{host}`（或範例檔中使用的 `{YOUR_IBMI_HOST_IP_OR_DNS}`）：該主機設定的 `host` 值
+  - `{hostId}`：`hosts_config.json` 中的主機 id（JSON key）
 
 ### 2.2 環境變數備援
 若未配置 JSON 檔，程式將自動嘗試從環境變數載入，變數格式為：
 - `IBMI_HOST_[主機ID]`、`IBMI_USER_[主機ID]`、`IBMI_PASSWORD_[主機ID]`
 
+也可用環境變數覆寫其他解析路徑（詳見第 3 節）：
+- `IBMI_HOSTS_CONFIG`：覆寫 `hosts_config.json` 路徑
+- `IBMI_SERVICES_PATH`：覆寫 `@ibm/ibmi-mcp-server` 的 `services.js` 路徑
+
+### 2.3 連線資訊加密回寫 (Encryption at Rest, Windows)
+`scripts/preflight.js` 載入 `hosts_config.json` 時，若偵測到某主機的 `host`/`port`/`user`/`password` 仍是明文，會在**第一次執行**時透過 Windows DPAPI（`ConvertTo-SecureString`/`ConvertFrom-SecureString`，實作於 `scripts/credentialCrypto.js`）加密這四個欄位，並回寫覆蓋 `hosts_config.json` 中對應的值（前綴 `dpapi:`）。之後每次執行都會自動、透明地解密回記憶體使用，檔案上不會再出現明文。
+
+- DPAPI 金鑰綁定「目前 Windows 使用者 + 這台機器」，不需要另外管理金鑰檔——即使這份已被 `.gitignore` 排除的檔案意外外流，離開這台機器、這個帳號就無法解密。
+- 僅在 `process.platform === "win32"` 時生效；非 Windows 平台會略過加密，維持明文（不影響既有流程，但也不提供保護）。
+- 只保護「來自設定檔」的憑證；若憑證是透過 `IBMI_HOST_*`/`IBMI_USER_*`/`IBMI_PASSWORD_*` 環境變數提供，則沒有檔案可回寫，不套用此機制。
+
 ---
 
-## 3. 事前憑證點檢 (Pre-flight Validation)
+## 3. 事前環境與憑證點檢 (Pre-flight Validation)
 
-在執行任何連線與資料擷取前，腳本必須調用檢查邏輯。若偵測到連線資訊不全或使用預留字，應立刻中斷並輸出引導指引：
+所有可執行腳本（`test_pipeline.js`、`validate_metrics.js`）在連線與查詢前，都必須先呼叫 `scripts/preflight.js` 提供的檢查函式；任一項缺失都會直接輸出 `❌`/`💡` 引導訊息並 `process.exit(1)`，暫停執行、不得靜默略過：
 
-```javascript
-function validateCredentials(hostId, hostConfig) {
-  if (!hostConfig.host || !hostConfig.user || !hostConfig.password || hostConfig.password === "YOUR_PASSWORD_HERE") {
-    console.error(`\n❌ [憑證缺失錯誤] 找不到主機 "${hostId}" 的連線憑證，或密碼仍為預設預留字。`);
-    console.error(`💡 [解決指引]:`);
-    console.error(`  1. 請檢查並填寫 scratch/hosts_config.json`);
-    console.error(`  2. 或在專案根目錄的 .env 檔案中新增環境變數：`);
-    console.error(`     IBMI_HOST_${hostId}=主機IP\n     IBMI_USER_${hostId}=帳號\n     IBMI_PASSWORD_${hostId}=密碼\n`);
-    throw new Error(`Missing credentials for host profile: ${hostId}`);
-  }
-}
-```
+| 檢查項目 | 對應函式 | 缺失時的行為 |
+|---|---|---|
+| Node.js 版本 (>=18) | `checkNodeVersion()` | 中斷並提示安裝新版 Node |
+| Python 3（僅 `test_pipeline.js` 需要，用於產生 HTML） | `checkPython()` | 依序嘗試 `python`/`python3`，都找不到則中斷並提示安裝 |
+| `@ibm/ibmi-mcp-server` 服務模組 (`SourceManager`) | `loadServices(args)` | 檢查 `packages/server/dist/public/services.js`（可由 `--services=` 或 `IBMI_SERVICES_PATH` 覆寫）是否存在，不存在則中斷並提示確認工作目錄或建置該專案 |
+| 主機設定檔是否存在 | `loadHostConfig(hostId, args)` | 找不到 `scratch/hosts_config.json` 則中斷並指向 `examples/hosts_config.json.example` |
+| 連線憑證是否完整、密碼是否仍為預留字 | `loadHostConfig(hostId, args)` | 中斷並提示填寫設定檔或改用 `IBMI_HOST_*`/`IBMI_USER_*`/`IBMI_PASSWORD_*` 環境變數 |
+
+`services.js` 的解析基準是**目前工作目錄（cwd）**（假設腳本從目標專案根目錄被呼叫），`hosts_config.json` 的解析基準則是**skill 自身所在目錄**（見第 2 節）——兩者刻意使用不同基準，因為前者屬於「消費此 skill 的專案」、後者屬於「skill 本身」，程式碼中兩者皆不得寫死絕對路徑。
 
 ---
 
@@ -94,29 +105,37 @@ function validateCredentials(hostId, hostConfig) {
 
 ## 6. 自動化驗證原則
 
-每次修改 SQL 欄位或計算邏輯後，必須執行 `scripts/validate_metrics.js` 進行基準值對比驗證，以確保報告數據與綠色畫面完全一致。
+每次修改 SQL 欄位或計算邏輯後，必須執行 `scripts/validate_metrics.js` 進行基準值對比驗證，以確保報告數據與綠色畫面完全一致。腳本一律從**目標專案根目錄**執行（`services.js` 以 cwd 解析），並以 `--host=` 指定 `hosts_config.json` 中的主機 id：
 
 ```bash
-node scratch/validate_metrics.js
+node <skill 路徑>/scripts/validate_metrics.js --host=<主機ID>
 ```
 
 ---
 
 ## 7. Pipeline 執行與測試指南
 
-使用 `scripts/test_pipeline.js` 進行端到端驗證：
+使用 `scripts/test_pipeline.js` 進行端到端驗證。所有參數皆可省略，省略時依序 fallback 到 `hosts_config.json` 對應欄位、再到程式內建預設值；`hosts_config.json` 中若剛好只有一組主機設定，`--host` 也可省略。
 
-### 7.1 事前憑證點檢（負向測試）
+可用參數：
+- `--host=<主機ID>`：`hosts_config.json` 中的 key（設定檔僅一組主機時可省略）
+- `--lib=<LibraryName>`：覆寫該主機設定的 `library`
+- `--maxDays=<N>`：覆寫該主機設定的 `maxDays`
+- `--config=<path>`：覆寫 `hosts_config.json` 路徑（預設為 skill 根目錄下的 `scratch/hosts_config.json`）
+- `--services=<path>`：覆寫 `@ibm/ibmi-mcp-server` 的 `services.js` 路徑（預設為 cwd 下的 `packages/server/dist/public/services.js`）
+
+### 7.1 事前環境/憑證點檢（負向測試）
 ```bash
-node scratch/test_pipeline.js --host=<主機ID>
+node <skill 路徑>/scripts/test_pipeline.js --host=<不存在或未填密碼的主機ID>
 ```
-*預期結果*：偵測到密碼缺失，顯示引導說明並中斷執行。
+*預期結果*：偵測到 Node/Python/`services.js`/憑證任一項缺失，顯示引導說明並中斷執行（見第 3 節）。
 
 ### 7.2 實機完整擷取
+在目標專案根目錄下執行（讓 `services.js` 能以 cwd 正確解析）：
 ```bash
-node scratch/test_pipeline.js --host=<主機ID> --lib=<LibraryName> --date=<MM/DD>
+node <skill 路徑>/scripts/test_pipeline.js --host=<主機ID>
 ```
-*預期結果*：連線 IBM i、自動識別成員、查詢效能資料並輸出命名格式為 `[HOST]_[LIB]_Performance_Report.html` 的報告。
+*預期結果*：連線 IBM i、自動識別成員、查詢效能資料，並依 `hosts_config.json` 中該主機的 `outputDirs` 輸出命名格式為 `[HOST]_[LIB]_Performance_Report.html` 的報告（預設輸出到 skill 根目錄的 `scratch/`）。
 
 ---
 
@@ -130,6 +149,8 @@ node scratch/test_pipeline.js --host=<主機ID> --lib=<LibraryName> --date=<MM/D
        └── ibmi-performance-extractor/
            ├── SKILL.md (即本文件)
            ├── scripts/
+           │   ├── preflight.js (依賴/憑證事前點檢，供其他腳本共用)
+           │   ├── credentialCrypto.js (Windows DPAPI 加密/解密，供 preflight.js 使用)
            │   ├── test_pipeline.js
            │   ├── generate_report.py
            │   └── validate_metrics.js
@@ -139,7 +160,12 @@ node scratch/test_pipeline.js --host=<主機ID> --lib=<LibraryName> --date=<MM/D
                └── hosts_config.json.example
    ```
 2. **自動載入**：同事只要使用 Git 拉取此專案，Antigravity IDE 就會**自動識別並載入**本 Skill，不需要手動在全域配置。
-3. **執行**：同事只需在根目錄下執行 `node scratch/test_pipeline.js` 或配置連線，AI 即可自動讀取此 Skill 來輔助引導與故障診斷。
+3. **設定連線**：同事在 `.agents/skills/ibmi-performance-extractor/scratch/hosts_config.json` 建立自己的憑證（此檔案已被 skill 自帶的 `.gitignore` 排除，不會被提交）。
+4. **執行**：腳本不需要、也不應該被複製到專案的 `scratch/` 目錄下——直接在**專案根目錄**執行 skill 自身位置的腳本即可（`hosts_config.json` 走 skill 相對路徑解析，`packages/server/services.js` 走 cwd 解析，見第 2、3 節）：
+   ```bash
+   node .agents/skills/ibmi-performance-extractor/scripts/test_pipeline.js --host=<主機ID>
+   ```
+   AI 即可自動讀取此 Skill 來輔助引導與故障診斷。
 
 ---
 

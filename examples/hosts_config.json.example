@@ -1,0 +1,21 @@
+{
+  "your_host_id_1": {
+    "host": "<YOUR_IBMI_HOST_IP_OR_DNS>",
+    "port": 8076,
+    "user": "<YOUR_IBMI_USER_PROFILE>",
+    "password": "<YOUR_IBMI_PASSWORD>",
+    "ignore-unauthorized": true,
+    "library": "<YOUR_DEFAULT_LIBRARY e.g. QPFRDATA>",
+    "maxDays": 5,
+    "outputDirs": ["outputs/{YOUR_IBMI_HOST_IP_OR_DNS}/"]
+  },
+  "your_host_id_2": {
+    "host": "<YOUR_IBMI_HOST_IP_OR_DNS>",
+    "port": 8076,
+    "user": "<YOUR_IBMI_USER_PROFILE>",
+    "password": "<YOUR_IBMI_PASSWORD>",
+    "ignore-unauthorized": true,
+    "library": "<YOUR_DEFAULT_LIBRARY>",
+    "outputDirs": ["outputs/{YOUR_IBMI_HOST_IP_OR_DNS}/", "C:/Users/<YOU>/Downloads"]
+  }
+}
