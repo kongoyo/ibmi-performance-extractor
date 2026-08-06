@@ -216,25 +216,42 @@ export function loadHostConfig(hostIdArg, args = {}) {
   if (hostConfigFromFile && isWindows()) {
     const runtimeConfig = { ...hostConfig };
     let mutated = false;
+    const encryptedHosts = [];
 
-    for (const field of PROTECTED_HOST_FIELDS) {
-      const raw = hostConfig[field];
-      if (raw === undefined || raw === null || raw === "") continue;
+    for (const key of Object.keys(allConfigs)) {
+      const config = allConfigs[key];
+      let hostMutated = false;
 
-      if (isEncryptedValue(raw)) {
-        const plain = decryptValue(raw);
-        runtimeConfig[field] = field === "port" ? Number(plain) : plain;
-      } else {
-        allConfigs[hostId][field] = encryptValue(raw);
-        mutated = true;
-        // runtimeConfig already holds the plaintext value for this run
+      for (const field of PROTECTED_HOST_FIELDS) {
+        const raw = config[field];
+        if (raw === undefined || raw === null || raw === "") continue;
+
+        if (isEncryptedValue(raw)) {
+          if (key === hostId) {
+            const plain = decryptValue(raw);
+            runtimeConfig[field] = field === "port" ? Number(plain) : plain;
+          }
+        } else {
+          // Skip placeholder values from being encrypted
+          if (typeof raw === "string" && (raw.includes("YOUR_") || raw.includes("PASSWORD_HERE"))) {
+            continue;
+          }
+          
+          allConfigs[key][field] = encryptValue(raw);
+          hostMutated = true;
+          mutated = true;
+        }
+      }
+
+      if (hostMutated) {
+        encryptedHosts.push(key);
       }
     }
 
     if (mutated) {
       fs.writeFileSync(resolvedConfig, JSON.stringify(allConfigs, null, 2));
       console.log(
-        `🔒 已將主機 "${hostId}" 的 host/port/user/password 以 Windows DPAPI 加密並回寫至 ${resolvedConfig}`,
+        `🔒 已將主機 "${encryptedHosts.join(", ")}" 的 host/port/user/password 以 Windows DPAPI 加密並回寫至 ${resolvedConfig}`,
       );
     }
 

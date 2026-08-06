@@ -464,7 +464,7 @@ def main():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{host} 效能分析與診斷報告</title>
+    <title>{lib} 效能分析報告</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -721,7 +721,7 @@ def main():
 <body>
     <div class="container">
         <header>
-            <h1>{host} 效能分析與診斷報告</h1>
+            <h1>{lib} 效能分析報告</h1>
             <p>IBM i Collection Services ({lib}) 多日趨勢與動態工作負載觀測指標</p>
             <div class="meta-badges">
                 <span class="badge">💻 主機: {host}</span>
