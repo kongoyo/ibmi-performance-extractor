@@ -14,6 +14,7 @@
 import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
+import { createRequire } from "module";
 import { fileURLToPath, pathToFileURL } from "url";
 import {
   PROTECTED_HOST_FIELDS,
@@ -73,20 +74,64 @@ export function checkPython() {
   );
 }
 
+// Monorepo checkout: services.js sits under packages/server/... relative to
+// the project root. Installed-as-npm-dependency layout: the package root
+// itself IS packages/server's published output, so services.js sits closer
+// to the package root. Both are checked when falling back to node_modules
+// resolution.
+const SERVICES_RELATIVE_CANDIDATES = [
+  ["packages", "server", "dist", "public", "services.js"],
+  ["dist", "public", "services.js"],
+];
+
+function resolveServicesFromNpmPackage() {
+  let require;
+  try {
+    require = createRequire(path.join(process.cwd(), "package.json"));
+  } catch {
+    return null;
+  }
+
+  let pkgJsonPath;
+  try {
+    pkgJsonPath = require.resolve("@ibm/ibmi-mcp-server/package.json", {
+      paths: [process.cwd()],
+    });
+  } catch {
+    return null;
+  }
+
+  const pkgRoot = path.dirname(pkgJsonPath);
+  for (const parts of SERVICES_RELATIVE_CANDIDATES) {
+    const candidate = path.join(pkgRoot, ...parts);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
 export async function loadServices(args = {}) {
-  const servicesPath =
-    args.services ||
-    process.env.IBMI_SERVICES_PATH ||
-    path.join(process.cwd(), "packages", "server", "dist", "public", "services.js");
-  const resolved = path.resolve(servicesPath);
+  const explicit = args.services || process.env.IBMI_SERVICES_PATH;
+  const cwdCandidate = path.join(
+    process.cwd(),
+    ...SERVICES_RELATIVE_CANDIDATES[0],
+  );
+
+  let resolved = path.resolve(explicit || cwdCandidate);
+
+  if (!explicit && !fs.existsSync(resolved)) {
+    const npmResolved = resolveServicesFromNpmPackage();
+    if (npmResolved) resolved = npmResolved;
+  }
 
   if (!fs.existsSync(resolved)) {
     fail(
       `找不到 @ibm/ibmi-mcp-server 服務模組 (SourceManager): ${resolved}`,
       `  1. 請確認目前工作目錄是已 build 好 packages/server 的 ibmi-mcp-server 專案根目錄\n` +
         `     (目前工作目錄: ${process.cwd()})\n` +
-        `  2. 或使用 --services=<絕對路徑> 參數,或設定環境變數 IBMI_SERVICES_PATH 指向 services.js\n` +
-        `  3. 若尚未建置該專案,請於 packages/server 內執行其建置指令`,
+        `  2. 若 @ibm/ibmi-mcp-server 是以 npm 套件形式安裝於 node_modules,請確認已從專案根目錄執行\n` +
+        `     (腳本會嘗試以 require.resolve 解析套件實際安裝位置,失敗則回退顯示上述路徑)\n` +
+        `  3. 或使用 --services=<絕對路徑> 參數,或設定環境變數 IBMI_SERVICES_PATH 指向 services.js\n` +
+        `  4. 若尚未建置該專案,請於 packages/server 內執行其建置指令`,
     );
   }
 

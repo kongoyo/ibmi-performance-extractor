@@ -1,9 +1,9 @@
 ---
-name: ibmi-scratch-perf-extractor
+name: ibmi-performance-extractor
 description: Extract IBM i Collection Services performance data from custom libraries and hosts using the scratch folder scripts, perform credential pre-flight validation, and generate beautiful responsive HTML performance reports.
 ---
 
-# IBM i Scratch Performance Data Extractor Skill
+# IBM i Performance Extractor Skill
 
 本 Skill 專門用於指導 AI Agent 與開發者使用專案中的 `scratch/` 腳本工具鏈，對任意 IBM i 主機與自訂 Library 的 `*MGTCOL` 效能資料庫進行資料提取、憑證事前點檢、JSON 串接以及 HTML 互動式儀表板的產出。
 
@@ -75,18 +75,29 @@ description: Extract IBM i Collection Services performance data from custom libr
 |---|---|---|
 | Node.js 版本 (>=18) | `checkNodeVersion()` | 中斷並提示安裝新版 Node |
 | Python 3（僅 `test_pipeline.js` 需要，用於產生 HTML） | `checkPython()` | 依序嘗試 `python`/`python3`，都找不到則中斷並提示安裝 |
-| `@ibm/ibmi-mcp-server` 服務模組 (`SourceManager`) | `loadServices(args)` | 檢查 `packages/server/dist/public/services.js`（可由 `--services=` 或 `IBMI_SERVICES_PATH` 覆寫）是否存在，不存在則中斷並提示確認工作目錄或建置該專案 |
+| `@ibm/ibmi-mcp-server` 服務模組 (`SourceManager`) | `loadServices(args)` | 檢查 `packages/server/dist/public/services.js`（可由 `--services=` 或 `IBMI_SERVICES_PATH` 覆寫）是否存在；cwd 下找不到時，會再嘗試以 `require.resolve('@ibm/ibmi-mcp-server/package.json', { paths: [cwd] })` 解析該套件在 `node_modules` 中的實際安裝位置（適用於它是以 npm 套件安裝、而非 monorepo 兄弟目錄的情境）；兩者皆失敗才中斷並提示確認工作目錄或建置該專案 |
 | 主機設定檔是否存在 | `loadHostConfig(hostId, args)` | 找不到 `scratch/hosts_config.json` 則中斷並指向 `examples/hosts_config.json.example` |
 | 連線憑證是否完整、密碼是否仍為預留字 | `loadHostConfig(hostId, args)` | 中斷並提示填寫設定檔或改用 `IBMI_HOST_*`/`IBMI_USER_*`/`IBMI_PASSWORD_*` 環境變數 |
 
-`services.js` 的解析基準是**目前工作目錄（cwd）**（假設腳本從目標專案根目錄被呼叫），`hosts_config.json` 的解析基準則是**skill 自身所在目錄**（見第 2 節）——兩者刻意使用不同基準，因為前者屬於「消費此 skill 的專案」、後者屬於「skill 本身」，程式碼中兩者皆不得寫死絕對路徑。
+`services.js` 的解析基準優先是**目前工作目錄（cwd）**（假設腳本從目標專案根目錄被呼叫），找不到時會回退嘗試以 Node 模組解析（`require.resolve`，搜尋路徑含 cwd）定位 `node_modules` 中實際安裝的 `@ibm/ibmi-mcp-server` 套件位置；`hosts_config.json` 的解析基準則是**skill 自身所在目錄**（見第 2 節）——兩者刻意使用不同基準，因為前者屬於「消費此 skill 的專案」、後者屬於「skill 本身」，程式碼中兩者皆不得寫死絕對路徑。
+
+### 3b. Schema 欄位健檢與資料健檢 (`scripts/healthcheck.js`)
+
+背景：`Int`/`Bch` 曾經被寫死為假資料好幾個月都沒被發現（見 `memory/field-mapping-hardening-plan.md`），根因是完全沒有機制去驗證「程式碼假設的欄位真的存在」與「抓回來的資料看起來合理」。`test_pipeline.js` 現在會自動執行兩層健檢：
+
+1. **連線後、查詢前 — Schema 存在性檢查 (`checkSchema`)**：對照 `references/field_manifest.json`（與 `field_reference.md` 同步維護的機器可讀版本），用 `QSYS2.SYSTABLES`／`QSYS2.SYSCOLUMNS` 確認目標 library 的 `QAPMISUM`/`QAPMSYSTEM`/`QAPMJOBL`/`QAPMDISK` 四張表、以及程式碼實際用到的每一個欄位都存在。任一張表或欄位缺失就中斷並列出缺什麼（`❌`/`💡` 格式，同第 3 節風格），不會讓查詢帶著錯誤假設繼續跑到後面才用一句難懂的 SQL 錯誤訊息炸掉。
+   - 結果依 `(host, library)` 快取在 `scratch/.schema_check_cache.json`，預設 7 天內不重複檢查，避免每次執行都增加額外的網路來回；可用 `--forceSchemaCheck=true` 強制重新檢查。
+   - **只驗證「欄位存在」，不保證「欄位有意義」**——`QAPMJOBL.JBPAGF` 就是欄位存在、型別正確，但值恆為 0 的反例（見 `field_manifest.json` 的 `knownDeadFields`）。這是下一層健檢要抓的。
+2. **抓資料後、寫報表前 — 資料健檢 (`checkDataSanity`)**：對抓回來的每個指標（Count/Rsp/Tot/Int/Bch/Dsk/Usr），檢查是否全程（所有已抓到的天數、interval）恆為同一個常數值——這正是 `Int` 曾經恆為 `0`、`Bch` 曾經恆等於 `Tot` 的模式。不是硬性中斷（因為某個指標剛好整段時間都是 0 也可能是真的），而是印出 `⚠️` 警告，並把警告清單寫進 JSON payload 的 `dataQualityWarnings`，`generate_report.py` 會在報表最上方顯示黃色警示卡，提醒使用者人工確認、而不是照單全收。
+
+`references/field_manifest.json` 與 `field_reference.md` 是同一份知識的兩種呈現（前者給程式碼讀、後者給人看），修改欄位對照時兩份都要同步更新。
 
 ---
 
 ## 4. 資料來源與成員解析原則
 
 1. **Julian Day 成員識別**：依 `MM/DD` 計算一年中的第幾天（`ddd`），映射至 `Qddd000002` 格式的成員名稱，詳細換算邏輯實作於 `scripts/test_pipeline.js`。
-2. **QTEMP 別名**：對每個成員在 `QTEMP` 動態建立 `ALIAS`，需涵蓋 `QAPMISUM`、`QAPMSYSTEM`、`QAPMJOBL`、`QAPMJOBOS`、`QAPMDISK` 共五張來源表。
+2. **QTEMP 別名**：對每個成員在 `QTEMP` 動態建立 `ALIAS`。批次報表產出（`test_pipeline.js`）只需要 `QAPMISUM`、`QAPMSYSTEM`、`QAPMJOBL`、`QAPMDISK` 四張表（`generate_report.py` 的 7 個指標都不需要 `QAPMJOBOS`）。`QAPMJOBOS` **刻意不在** `test_pipeline.js` 的批次流程裡預先建立別名——它只用於第 9 節的 RCA 根因分析，是 agent 針對特定 Interval 隨選（on-demand）查詢時才建立，範圍窄（單一 member/interval），不需要也不該為了「以防萬一」而在每天的批次抓取都多建一次（2026-08-06 已釐清此點：曾經是文件寫「五張表」但程式碼只建四個別名的落差，並非程式碼漏做，是文件描述錯誤，已修正為此段）。
 3. **CPU 使用率對齊原則**：CPU 指標必須以 LPAR 分區整體容量為基準計算，而非單一核心，以確保與綠色畫面 `DSPPFRDTA` 的數值一致。
 4. **高磁碟使用率 (High Disk)**：此指標不存在於 `QAPMISUM`，需透過 `QAPMDISK` 中各 ARM 的閒置/取樣計數動態推算後，取所有 ARM 中的最大值。
 5. **分頁缺失欄位**：`QAPMJOBL` 中的分頁缺失欄位名稱與直覺不同，必須使用正確欄位，詳見 `references/field_reference.md`。
@@ -123,6 +134,8 @@ node <skill 路徑>/scripts/validate_metrics.js --host=<主機ID>
 - `--maxDays=<N>`：覆寫該主機設定的 `maxDays`
 - `--config=<path>`：覆寫 `hosts_config.json` 路徑（預設為 skill 根目錄下的 `scratch/hosts_config.json`）
 - `--services=<path>`：覆寫 `@ibm/ibmi-mcp-server` 的 `services.js` 路徑（預設為 cwd 下的 `packages/server/dist/public/services.js`）
+- `--forceSchemaCheck=true`：略過第 3b 節 Schema 檢查的 7 天快取，強制重新驗證欄位
+- `--rca=true`：額外輸出 RCA 根因診斷區塊（預設不輸出）。⚠️ 該區塊目前是**寫死的靜態內容**（固定描述 07/13 `HN040130A`、07/16 `CMPFILDTA` 這兩個 `KTB` library 的歷史案例），並非根據這次實際分析的資料產生——對任何其他 host/library/日期的報表輸出它，畫面上的案例內容都會是錯的、與這次資料無關，只是尚未有真正動態產生 RCA 的實作前的佔位內容
 
 ### 7.1 事前環境/憑證點檢（負向測試）
 ```bash
@@ -151,11 +164,13 @@ node <skill 路徑>/scripts/test_pipeline.js --host=<主機ID>
            ├── scripts/
            │   ├── preflight.js (依賴/憑證事前點檢，供其他腳本共用)
            │   ├── credentialCrypto.js (Windows DPAPI 加密/解密，供 preflight.js 使用)
+           │   ├── healthcheck.js (Schema 欄位存在性檢查 + 資料健檢，見第 3b 節)
            │   ├── test_pipeline.js
            │   ├── generate_report.py
            │   └── validate_metrics.js
            ├── references/
-           │   └── field_reference.md  (欄位對照、公式細節)
+           │   ├── field_reference.md  (欄位對照、公式細節，給人看)
+           │   └── field_manifest.json (與上面同步的機器可讀欄位清單，供 healthcheck.js 讀取)
            └── examples/
                └── hosts_config.json.example
    ```

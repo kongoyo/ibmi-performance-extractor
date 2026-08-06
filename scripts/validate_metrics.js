@@ -30,6 +30,62 @@ const benchmarkIntervals = [
   { intnum: 30, time: "07:30", count: 3698, rsp: 0.25, tot: 35, faults: 271  }
 ];
 
+// Benchmark data from 07/13 Green Screen Screenshot (00:15 to 05:00) —
+// verifies the Int/Bch fix (2026-08-06, see references/field_reference.md
+// section 2b). This window has zero interactive workload, so it's a good
+// check that Int correctly comes back 0 (not a leftover artifact of the
+// old always-0 bug) while Tot still varies normally.
+const interactiveCpuBenchmark = [
+  { intnum: 1,  time: "00:15", tot: 38, int: 0 },
+  { intnum: 2,  time: "00:30", tot: 24, int: 0 },
+  { intnum: 3,  time: "00:45", tot: 20, int: 0 },
+  { intnum: 4,  time: "01:00", tot: 19, int: 0 },
+  { intnum: 5,  time: "01:15", tot: 36, int: 0 },
+  { intnum: 6,  time: "01:30", tot: 15, int: 0 },
+  { intnum: 7,  time: "01:45", tot: 17, int: 0 },
+  { intnum: 8,  time: "02:00", tot: 17, int: 0 },
+  { intnum: 9,  time: "02:15", tot: 30, int: 0 },
+  { intnum: 10, time: "02:30", tot: 17, int: 0 },
+  { intnum: 11, time: "02:45", tot: 14, int: 0 },
+  { intnum: 12, time: "03:00", tot: 12, int: 0 },
+  { intnum: 13, time: "03:15", tot: 34, int: 0 },
+  { intnum: 14, time: "03:30", tot: 37, int: 0 },
+  { intnum: 15, time: "03:45", tot: 43, int: 0 },
+  { intnum: 16, time: "04:00", tot: 52, int: 0 },
+  { intnum: 17, time: "04:15", tot: 56, int: 0 },
+  { intnum: 18, time: "04:30", tot: 52, int: 0 },
+  { intnum: 19, time: "04:45", tot: 54, int: 0 },
+  { intnum: 20, time: "05:00", tot: 53, int: 0 },
+];
+
+// Benchmark data for High Disk (2026-08-06 green screen screenshots) —
+// verifies the Dsk rounding fix. DSPPFRDTA CEILINGs the disk busy%
+// (7.28% -> 8, 9.17% -> 10), it does not truncate or round-to-nearest;
+// truncating (the old behavior) was consistently 1 too low on every
+// sample. Spans two different members/dates on purpose.
+const diskUtilBenchmark = [
+  { member: "Q194000017", intnum: 31, time: "07/13 07:45", dsk: 6 },
+  { member: "Q194000017", intnum: 32, time: "07/13 08:00", dsk: 6 },
+  { member: "Q194000017", intnum: 33, time: "07/13 08:15", dsk: 7 },
+  { member: "Q194000017", intnum: 34, time: "07/13 08:30", dsk: 5 },
+  { member: "Q194000017", intnum: 35, time: "07/13 08:45", dsk: 5 },
+  { member: "Q194000017", intnum: 36, time: "07/13 09:00", dsk: 8 },
+  { member: "Q194000017", intnum: 37, time: "07/13 09:15", dsk: 8 },
+  { member: "Q194000017", intnum: 38, time: "07/13 09:30", dsk: 8 },
+  { member: "Q194000017", intnum: 39, time: "07/13 09:45", dsk: 8 },
+  { member: "Q194000017", intnum: 40, time: "07/13 10:00", dsk: 8 },
+  { member: "Q196000016", intnum: 21, time: "07/15 05:15", dsk: 10 },
+  { member: "Q196000016", intnum: 22, time: "07/15 05:30", dsk: 13 },
+  { member: "Q196000016", intnum: 23, time: "07/15 05:45", dsk: 11 },
+  { member: "Q196000016", intnum: 24, time: "07/15 06:00", dsk: 11 },
+  { member: "Q196000016", intnum: 25, time: "07/15 06:15", dsk: 10 },
+  { member: "Q196000016", intnum: 26, time: "07/15 06:30", dsk: 12 },
+  { member: "Q196000016", intnum: 27, time: "07/15 06:45", dsk: 13 },
+  { member: "Q196000016", intnum: 28, time: "07/15 07:00", dsk: 9 },
+  { member: "Q196000016", intnum: 29, time: "07/15 07:15", dsk: 12 },
+  { member: "Q196000016", intnum: 30, time: "07/15 07:30", dsk: 8 },
+];
+
 async function main() {
   console.log(`🔍 執行環境事前點檢...`);
   checkNodeVersion();
@@ -165,6 +221,78 @@ async function main() {
     `);
 
     assertEqual("Deduplication group row count (expected 1 aggregated row)", aggRes.data.length, 1);
+
+    // ----------------------------------------------------
+    // Test Area 5: Interactive/Batch CPU Split (Int/Bch fix, 2026-08-06)
+    // Target: 07/13 00:15~05:00 (INTNUM 1-20), a window with zero real
+    // interactive workload — Int must come back 0, not the old hardcoded
+    // 0-that-never-changes bug, and Bch must equal Tot - Int.
+    // ----------------------------------------------------
+    console.log(`\n📋 [Test Area 5] Interactive/Batch CPU Split (Green Screen Benchmark)`);
+    const intCpuRes = await manager.executeQuery(hostId, `
+      SELECT INTNUM, SUM(JBCPU) AS INT_CPU_MS
+      FROM QTEMP.V_QAPMJOBL_194
+      WHERE INTNUM BETWEEN 1 AND 20 AND TRIM(JBTYPE) = 'I'
+      GROUP BY INTNUM
+    `);
+    const intCpuByInterval = {};
+    intCpuRes.data.forEach(r => {
+      intCpuByInterval[r.INTNUM] = parseFloat(r.INT_CPU_MS) || 0;
+    });
+
+    const sysRes = await manager.executeQuery(hostId, `
+      SELECT
+        m.INTNUM,
+        CASE WHEN s.SYSCTA > 0 THEN CAST((s.SYSPTU / (s.SYSCTA * 1.0)) * 100.0 AS INTEGER) ELSE 0 END AS TOT,
+        s.SYSCTA
+      FROM QTEMP.V_QAPMISUM_194 m
+      JOIN QTEMP.V_QAPMSYSTEM_194 s ON m.INTNUM = s.INTNUM
+      WHERE m.INTNUM BETWEEN 1 AND 20
+    `);
+    const sysByInterval = {};
+    sysRes.data.forEach(r => { sysByInterval[r.INTNUM] = r; });
+
+    for (const expected of interactiveCpuBenchmark) {
+      const row = sysByInterval[expected.intnum];
+      if (!row) {
+        console.error(`  [${red}FAIL${reset}] Interval ${expected.time} (INTNUM ${expected.intnum}) not found`);
+        failedTests++;
+        continue;
+      }
+      const sysCta = parseFloat(row.SYSCTA) || 0;
+      const intCpuMs = intCpuByInterval[expected.intnum] || 0;
+      const actualInt = sysCta > 0 ? Math.trunc((intCpuMs / sysCta) * 100.0) : 0;
+      const actualBch = Math.max(0, row.TOT - actualInt);
+
+      console.log(`\n  Interval ${expected.time} (INTNUM ${expected.intnum}):`);
+      assertEqual(`    CPU Tot %`, row.TOT, expected.tot);
+      assertEqual(`    CPU Int %`, actualInt, expected.int);
+      assertEqual(`    Int + Bch == Tot`, actualInt + actualBch, row.TOT);
+    }
+
+    // ----------------------------------------------------
+    // Test Area 6: High Disk Utilization Rounding (Dsk fix, 2026-08-06)
+    // DSPPFRDTA CEILINGs the max-ARM busy% rather than truncating it.
+    // ----------------------------------------------------
+    console.log(`\n📋 [Test Area 6] High Disk Utilization Rounding (Green Screen Benchmark)`);
+    const diskMembers = [...new Set(diskUtilBenchmark.map(r => r.member))];
+    const diskAliases = {};
+    for (const member of diskMembers) {
+      const alias = `QTEMP.V_QAPMDISK_${member}`;
+      await manager.executeQuery(hostId, `CREATE OR REPLACE ALIAS ${alias} FOR ${library}.QAPMDISK (${member})`);
+      diskAliases[member] = alias;
+    }
+
+    for (const expected of diskUtilBenchmark) {
+      const alias = diskAliases[expected.member];
+      const dRes = await manager.executeQuery(hostId, `
+        SELECT COALESCE(MAX(CASE WHEN DSSMPL > 0 THEN CAST(CEILING((1.0 - DSNBSY * 1.0 / DSSMPL) * 100) AS INTEGER) ELSE 0 END), 0) AS DSK
+        FROM ${alias}
+        WHERE INTNUM = ${expected.intnum}
+      `);
+      const actual = dRes.data.length > 0 ? dRes.data[0].DSK : null;
+      assertEqual(`  ${expected.time} (INTNUM ${expected.intnum}) High Disk %`, actual, expected.dsk);
+    }
 
     // ----------------------------------------------------
     // Final Summary

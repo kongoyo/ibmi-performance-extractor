@@ -1,0 +1,69 @@
+{
+  "_comment": "Machine-readable field manifest for the fields test_pipeline.js / validate_metrics.js actually reference. Used by scripts/healthcheck.js to verify a target library's schema before running any extraction, so a missing/renamed field fails fast with a clear message instead of a raw SQL error mid-pipeline or a silent NULL/0 baked into the report. 'type':'key' fields only need to exist; 'type':'metric' fields should additionally have a lastVerifiedNonConstant entry once someone has empirically confirmed (against real data, not just column existence) that the field actually carries varying values — existence alone does not mean the field is meaningful (see QAPMJOBL.JBPAGF in knownDeadFields, which exists with the right name/type but is always 0).",
+  "_schemaVerifiedEnvironments": [
+    {
+      "date": "2026-08-06",
+      "environments": [
+        { "host": "clark75", "library": "KTB", "osVersion": "7.3" },
+        { "host": "clark73", "library": "QPFRDATA", "osVersion": "7.3" },
+        { "host": "clark74", "library": "QPFRDATA", "osVersion": "7.4" },
+        { "host": "clark75", "library": "QPFRDATA", "osVersion": "7.5" }
+      ],
+      "result": "All 26 fields below identical (name/type/length) across all four environments. Only difference found: QAPMISUM has 153 columns on 7.4/7.5 vs 152 on 7.3 (confirmed release-driven: both 7.3 hosts show 152, both 7.4/7.5 hosts show 153; the extra column is not one this manifest uses). Re-run this diff whenever a new OS release/host is added — matching 4 times does not guarantee a 5th will."
+    }
+  ],
+  "tables": {
+    "QAPMISUM": {
+      "purpose": "15-minute interval system summary: transaction count/response time, page faults",
+      "fields": {
+        "INTNUM": { "type": "key", "purpose": "interval number, join key" },
+        "DTETIM": { "type": "key", "purpose": "interval date/time YYMMDDHHmm" },
+        "INTSEC": { "type": "metric", "purpose": "elapsed seconds in interval (denominator for Usr)", "lastVerifiedNonConstant": null },
+        "JBNTR": { "type": "metric", "purpose": "transaction count (Count)", "lastVerifiedNonConstant": "2026-08-06" },
+        "JBRSP": { "type": "metric", "purpose": "total response time in seconds (Rsp)", "lastVerifiedNonConstant": "2026-08-06" },
+        "JBTFLT": { "type": "metric", "purpose": "system-wide page faults (Usr numerator)", "lastVerifiedNonConstant": null }
+      }
+    },
+    "QAPMSYSTEM": {
+      "purpose": "LPAR CPU capacity per interval, joined to QAPMISUM for CPU%",
+      "fields": {
+        "INTNUM": { "type": "key", "purpose": "interval number, join key" },
+        "SYSPTU": { "type": "metric", "purpose": "CPU time used (Tot numerator)", "lastVerifiedNonConstant": "2026-08-06" },
+        "SYSCTA": { "type": "metric", "purpose": "CPU time available (Tot/Int denominator)", "lastVerifiedNonConstant": "2026-08-06" }
+      }
+    },
+    "QAPMJOBL": {
+      "purpose": "per-job/thread per-interval stats: Top-N job ranking and Interactive CPU split",
+      "fields": {
+        "INTNUM": { "type": "key", "purpose": "interval number, join/group key" },
+        "JBNAME": { "type": "key", "purpose": "job name" },
+        "JBUSER": { "type": "key", "purpose": "job user profile" },
+        "JBNBR": { "type": "key", "purpose": "job number" },
+        "JBTYPE": { "type": "key", "purpose": "job type (I/B/V/S/M/W/A/X, etc.) — used to isolate Interactive (JBTYPE='I')" },
+        "JBCPU": { "type": "metric", "purpose": "thread unscaled CPU ms — summed for Top-CPU ranking and Interactive CPU split", "lastVerifiedNonConstant": "2026-08-06" },
+        "JBTFLT": { "type": "metric", "purpose": "total page faults per job/interval — used for Top-Fault ranking (NOT the same semantics as QAPMISUM.JBTFLT)", "lastVerifiedNonConstant": "2026-08-06" },
+        "JBRSP": { "type": "metric", "purpose": "total response seconds per job/interval", "lastVerifiedNonConstant": null },
+        "JBNTR": { "type": "metric", "purpose": "transactions per job/interval", "lastVerifiedNonConstant": null },
+        "JBDBR": { "type": "metric", "purpose": "physical database reads (part of TOTAL_IO)", "lastVerifiedNonConstant": "2026-08-06" },
+        "JBNDB": { "type": "metric", "purpose": "physical non-database reads (part of TOTAL_IO)", "lastVerifiedNonConstant": null },
+        "JBWRT": { "type": "metric", "purpose": "physical writes (part of TOTAL_IO)", "lastVerifiedNonConstant": null },
+        "JBADBR": { "type": "metric", "purpose": "asynchronous database reads (part of TOTAL_IO, MIMIX diagnosis)", "lastVerifiedNonConstant": "2026-08-06" },
+        "JBADBW": { "type": "metric", "purpose": "asynchronous database writes (part of TOTAL_IO)", "lastVerifiedNonConstant": null }
+      }
+    },
+    "QAPMDISK": {
+      "purpose": "per-disk-ARM per-interval busy/sample counts, used for High Disk %",
+      "fields": {
+        "INTNUM": { "type": "key", "purpose": "interval number, join key" },
+        "DSNBSY": { "type": "metric", "purpose": "not-busy sample count (Dsk numerator)", "lastVerifiedNonConstant": "2026-08-06" },
+        "DSSMPL": { "type": "metric", "purpose": "total sample count (Dsk denominator)", "lastVerifiedNonConstant": "2026-08-06" }
+      }
+    }
+  },
+  "knownDeadFields": {
+    "QAPMJOBL.JBPAGF": {
+      "reason": "Column exists with the correct name/type/description (\"PAG faults\") but was empirically always 0 across every sampled job/interval on host clark75, library KTB, 2026-08-06. Do not use for per-job page-fault ranking — use QAPMJOBL.JBTFLT instead, which has real data. Re-verify on a different host/library before trusting this field there.",
+      "verifiedDate": "2026-08-06"
+    }
+  }
+}

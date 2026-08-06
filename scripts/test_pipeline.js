@@ -10,6 +10,7 @@ import {
   loadHostConfig,
   resolveOutputDirs,
 } from "./preflight.js";
+import { checkSchema, checkDataSanity } from "./healthcheck.js";
 
 // Helper to convert Julian Day of Year to MM/DD (non-leap year)
 function julianToDateStr(julianStr) {
@@ -56,6 +57,8 @@ async function main() {
   });
 
   try {
+    await checkSchema(manager, hostId, library, { force: args.forceSchemaCheck === "true" });
+
     // Step 1: Query all partitions (members) of QAPMISUM in the target library
     console.log(`\n🔍 Querying members (partitions) for ${library}.QAPMISUM...`);
     const partitionRes = await manager.executeQuery(hostId, `
@@ -90,6 +93,11 @@ async function main() {
     }
     const dataByDate = {};
     const peakJobsByDate = {};
+    // Real (non-zero-padded) values only, across every processed day —
+    // used for the post-fetch constant-value sanity check. Padded array
+    // slots for a still-in-progress "today" partition would look like
+    // false 0s here, so this is populated straight from query rows instead.
+    const metricSamples = { Count: [], Rsp: [], Tot: [], Int: [], Bch: [], Dsk: [], Usr: [] };
 
     // Step 2: Loop through each partition and query performance data
     for (const part of partitions) {
@@ -127,6 +135,28 @@ async function main() {
       await manager.executeQuery(hostId, `CREATE OR REPLACE ALIAS QTEMP.QAPMDISK_${julian} FOR ${library}.QAPMDISK (${part})`);
       const aliasDisk = `QTEMP.QAPMDISK_${julian}`;
 
+      // Int/Bch: QAPMSYSTEM has no interactive/batch CPU split column (verified
+      // against all ~90 columns on 2026-08-06), so Interactive is derived
+      // bottom-up from QAPMJOBL (SUM(JBCPU) WHERE JBTYPE='I'), and Batch is
+      // Tot minus Interactive so the two always reconcile to the trusted Tot
+      // figure regardless of which other JBTYPE codes (B/V/S/M/W/A/X, etc.)
+      // account for the rest. See references/field_reference.md section 2b.
+      // Run as its own query (not joined into the interval-summary query
+      // below) — a combined JOIN/correlated-subquery plan timed out (>30s)
+      // on heavier days (e.g. 07/13, 1.4M QAPMJOBL rows) even though this
+      // query alone finishes in a few seconds.
+      console.log(`Querying Interactive CPU by interval...`);
+      const intCpuRes = await manager.executeQuery(hostId, `
+        SELECT INTNUM, SUM(JBCPU) AS INT_CPU_MS
+        FROM ${aliasJobl}
+        WHERE TRIM(JBTYPE) = 'I'
+        GROUP BY INTNUM
+      `, [], undefined, undefined, 10000);
+      const intCpuByInterval = {};
+      intCpuRes.data.forEach(r => {
+        intCpuByInterval[parseInt(r.INTNUM, 10)] = parseFloat(r.INT_CPU_MS) || 0;
+      });
+
       console.log(`Querying 14-column Interval Summary...`);
       const misumRes = await manager.executeQuery(hostId, `
         SELECT
@@ -137,11 +167,10 @@ async function main() {
           m.JBNTR AS "Count",
           CASE WHEN m.JBNTR > 0 THEN DECIMAL(m.JBRSP / (m.JBNTR * 1000.0), 5, 2) ELSE 0.00 END AS "Rsp",
           CASE WHEN s.SYSCTA > 0 THEN CAST((s.SYSPTU / (s.SYSCTA * 1.0)) * 100.0 AS INTEGER) ELSE 0 END AS "Tot",
-          0 AS "Int",
-          CASE WHEN s.SYSCTA > 0 THEN CAST((s.SYSPTU / (s.SYSCTA * 1.0)) * 100.0 AS INTEGER) ELSE 0 END AS "Bch",
+          s.SYSCTA AS "SysCta",
           0 AS "Util",
           COALESCE((
-            SELECT MAX(CASE WHEN d.DSSMPL > 0 THEN INTEGER((1.0 - d.DSNBSY * 1.0 / d.DSSMPL) * 100) ELSE 0 END)
+            SELECT MAX(CASE WHEN d.DSSMPL > 0 THEN CAST(CEILING((1.0 - d.DSNBSY * 1.0 / d.DSSMPL) * 100) AS INTEGER) ELSE 0 END)
             FROM ${aliasDisk} d WHERE d.INTNUM = m.INTNUM
           ), 0) AS "Dsk",
           '0002' AS "Unit",
@@ -163,15 +192,29 @@ async function main() {
         const intVal = parseInt(r.INTNUM, 10);
         intnumToTime[intVal] = r.Time;
 
+        const sysCta = parseFloat(r.SysCta) || 0;
+        const intCpuMs = intCpuByInterval[intVal] || 0;
+        const totPct = r.Tot || 0;
+        const intPct = sysCta > 0 ? Math.trunc((intCpuMs / sysCta) * 100.0) : 0;
+        const bchPct = Math.max(0, totPct - intPct);
+
         const idx = standardTimes.indexOf(r.Time);
         if (idx !== -1) {
           dataByDate[dateStr].Count[idx] = r.Count || 0;
           dataByDate[dateStr].Rsp[idx] = parseFloat(r.Rsp) || 0.0;
-          dataByDate[dateStr].Tot[idx] = r.Tot || 0;
-          dataByDate[dateStr].Int[idx] = r.Int || 0;
-          dataByDate[dateStr].Bch[idx] = r.Bch || 0;
+          dataByDate[dateStr].Tot[idx] = totPct;
+          dataByDate[dateStr].Int[idx] = intPct;
+          dataByDate[dateStr].Bch[idx] = bchPct;
           dataByDate[dateStr].Dsk[idx] = r.Dsk || 0;
           dataByDate[dateStr].Usr[idx] = r.Usr || 0;
+
+          metricSamples.Count.push(r.Count || 0);
+          metricSamples.Rsp.push(parseFloat(r.Rsp) || 0.0);
+          metricSamples.Tot.push(totPct);
+          metricSamples.Int.push(intPct);
+          metricSamples.Bch.push(bchPct);
+          metricSamples.Dsk.push(r.Dsk || 0);
+          metricSamples.Usr.push(r.Usr || 0);
         }
       });
 
@@ -321,6 +364,9 @@ async function main() {
       });
     }
 
+    console.log(``);
+    const dataQualityWarnings = checkDataSanity(metricSamples);
+
     // Step 3: Write payload JSON
     const payload = {
       host: hostId,
@@ -328,7 +374,8 @@ async function main() {
       dates: dates.reverse(), // Show in chronological order
       times: standardTimes,
       data: dataByDate,
-      peakJobs: peakJobsByDate
+      peakJobs: peakJobsByDate,
+      dataQualityWarnings
     };
 
     const jsonPath = path.join(outputDirs[0], `${hostId}_perf_all.json`);
@@ -344,7 +391,8 @@ async function main() {
     const generatedPaths = [];
     for (const dir of outputDirs) {
       const outPath = path.join(dir, `${hostUpper}_${libUpper}_Performance_Report.html`);
-      const cmd = `${pythonCmd} "${reporterScript}" --input "${jsonPath}" --output "${outPath}" --host ${hostId} --lib ${library}`;
+      const rcaFlag = args.rca === "true" ? " --rca" : "";
+      const cmd = `${pythonCmd} "${reporterScript}" --input "${jsonPath}" --output "${outPath}" --host ${hostId} --lib ${library}${rcaFlag}`;
       console.log(`Executing: ${cmd}`);
       execSync(cmd, { encoding: "utf8" });
       generatedPaths.push(outPath);
