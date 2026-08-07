@@ -22,7 +22,7 @@
                └── hosts_config.json.example
    ```
 2. **自動載入**：同事只要使用 Git 拉取此專案，Antigravity IDE 就會**自動識別並載入**本 Skill，不需要手動在全域配置。
-3. **設定連線**：同事在 `.agents/skills/ibmi-performance-extractor/scratch/hosts_config.json` 建立自己的憑證（此檔案已被 skill 自帶的 `.gitignore` 排除，不會被提交）。
+3. **設定連線**：同事在 `.agents/skills/ibmi-performance-extractor/config/hosts_config.json` 建立自己的憑證（此檔案已被 skill 自帶的 `.gitignore` 排除，不會被提交）。
 4. **執行**：腳本不需要、也不應該被複製到專案的 `scratch/` 目錄下——直接在**專案根目錄**執行 skill 自身位置的腳本即可：
    ```bash
    node .agents/skills/ibmi-performance-extractor/scripts/test_pipeline.js --host=<主機ID>

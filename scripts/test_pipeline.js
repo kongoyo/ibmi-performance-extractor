@@ -35,7 +35,8 @@ async function main() {
   console.log(`📌 Host: ${hostConfig.host} (id: ${hostId})`);
   console.log(`📌 Library: ${library}`);
   console.log(`📌 Config: ${configPath}`);
-  console.log(`📌 Output dirs: ${outputDirs.join(", ")}`);
+  console.log(`📌 Data dir: ${dataDir}`);
+  console.log(`📌 Output dir: ${outDir}`);
 
   const manager = SourceManager.getInstance();
   await manager.registerSource(hostId, {

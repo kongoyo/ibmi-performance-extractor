@@ -1,8 +1,8 @@
 # 憑證與設定檔管理 (Credential Profiles)
 
-為了避免明文憑證寫死在程式碼中，連線資料優先透過以下兩種方式載入。**此設定檔隨 skill 本身攜帶/分享**，不寫入目標專案：所有腳本一律以自己的檔案位置（`scripts/` 的上一層，即 skill 根目錄）解析 `scratch/hosts_config.json`，與執行時的工作目錄（cwd）無關，因此無論 skill 是獨立資料夾，還是被放進某專案的 `.agents/skills/ibmi-performance-extractor/`，都會讀到同一份設定。
+為了避免明文憑證寫死在程式碼中，連線資料優先透過以下兩種方式載入。**此設定檔隨 skill 本身攜帶/分享**，不寫入目標專案：所有腳本一律以自己的檔案位置（`scripts/` 的上一層，即 skill 根目錄）解析 `config/hosts_config.json`，與執行時的工作目錄（cwd）無關，因此無論 skill 是獨立資料夾，還是被放進某專案的 `.agents/skills/ibmi-performance-extractor/`，都會讀到同一份設定。
 
-## 1. 主機設定檔 `<skill 根目錄>/scratch/hosts_config.json`
+## 1. 主機設定檔 `<skill 根目錄>/config/hosts_config.json`
 在 skill 根目錄下的 `scratch/` 建立此檔並登錄各主機連線設定，且在版控中忽略該檔案的實際內容（已在 `.gitignore` 中排除整個 `scratch/`）：
 ```json
 {
@@ -52,7 +52,7 @@
 | Node.js 版本 (>=18) | `checkNodeVersion()` | 中斷並提示安裝新版 Node |
 | Python 3 | `checkPython()` | 依序嘗試 `python`/`python3`，都找不到則中斷並提示安裝 |
 | `@ibm/ibmi-mcp-server` 服務模組 (`SourceManager`) | `loadServices(args)` | 檢查 `services.js` 是否存在；cwd 找不到時嘗試 `require.resolve` 定位 npm 套件；皆失敗才中斷。 |
-| 主機設定檔是否存在 | `loadHostConfig(hostId, args)` | 找不到 `scratch/hosts_config.json` 則中斷並指向 `examples/hosts_config.json.example` |
+| 主機設定檔是否存在 | `loadHostConfig(hostId, args)` | 找不到 `config/hosts_config.json` 則中斷並指向 `examples/hosts_config.json.example` |
 | 連線憑證是否完整 | `loadHostConfig(hostId, args)` | 中斷並提示填寫設定檔或改用環境變數 |
 
 ## Schema 欄位健檢與資料健檢 (`scripts/healthcheck.js`)

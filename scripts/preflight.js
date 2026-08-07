@@ -139,21 +139,20 @@ export async function loadServices(args = {}) {
 }
 
 export function loadHostConfig(hostIdArg, args = {}) {
+  const envPath = process.env.IBMI_HOSTS_CONFIG;
   const configPath =
     args.config ||
-    process.env.IBMI_HOSTS_CONFIG ||
-    path.join(SKILL_ROOT, "scratch", "hosts_config.json");
-  const resolvedConfig = path.resolve(configPath);
+    envPath ? path.resolve(process.cwd(), envPath) : path.join(SKILL_ROOT, "config", "hosts_config.json");
 
-  if (!fs.existsSync(resolvedConfig)) {
+  if (!fs.existsSync(configPath)) {
     fail(
-      `找不到主機設定檔: ${resolvedConfig}`,
-      `  請參考 ${path.join(SKILL_ROOT, "examples", "hosts_config.json.example")} 建立 scratch/hosts_config.json\n` +
-        `  (此檔案放在 skill 資料夾下的 scratch/,會隨 skill 一起分享/攜帶,且已被 .gitignore 排除)`,
+      `找不到主機設定檔: ${configPath}`,
+      `  請參考 ${path.join(SKILL_ROOT, "examples", "hosts_config.json.example")} 建立 config/hosts_config.json\n` +
+        `  (此檔案放在 skill 資料夾下的 config/,會隨 skill 一起分享/攜帶,且已被 .gitignore 排除)`,
     );
   }
 
-  const allConfigs = JSON.parse(fs.readFileSync(resolvedConfig, "utf8"));
+  const allConfigs = JSON.parse(fs.readFileSync(configPath, "utf8"));
   let hostId = hostIdArg;
 
   if (!hostId) {
@@ -201,7 +200,7 @@ export function loadHostConfig(hostIdArg, args = {}) {
   ) {
     fail(
       `找不到主機 "${hostId}" 的連線憑證,或密碼仍為預留字。`,
-      `  1. 請檢查並填寫 ${resolvedConfig}\n` +
+      `  1. 請檢查並填寫 ${configPath}\n` +
         `  2. 或設定環境變數:\n` +
         `     IBMI_HOST_${hostId}=主機IP\n     IBMI_USER_${hostId}=帳號\n     IBMI_PASSWORD_${hostId}=密碼`,
     );
@@ -249,16 +248,16 @@ export function loadHostConfig(hostIdArg, args = {}) {
     }
 
     if (mutated) {
-      fs.writeFileSync(resolvedConfig, JSON.stringify(allConfigs, null, 2));
+      fs.writeFileSync(configPath, JSON.stringify(allConfigs, null, 2));
       console.log(
-        `🔒 已將主機 "${encryptedHosts.join(", ")}" 的 host/port/user/password 以 Windows DPAPI 加密並回寫至 ${resolvedConfig}`,
+        `🔒 已將主機 "${encryptedHosts.join(", ")}" 的 host/port/user/password 以 Windows DPAPI 加密並回寫至 ${configPath}`,
       );
     }
 
     hostConfig = runtimeConfig;
   }
 
-  return { hostId, hostConfig, configPath: resolvedConfig };
+  return { hostId, hostConfig, configPath: configPath };
 }
 
 /**

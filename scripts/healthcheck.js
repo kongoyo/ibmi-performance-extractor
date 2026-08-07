@@ -66,6 +66,25 @@ export async function checkSchema(manager, hostId, library, { force = false } = 
     console.error(
       `\n❌ [Schema 檢查失敗] Library "${library}" 缺少以下效能檔案: ${missingTables.join(", ")}`,
     );
+    
+    try {
+      const probeRes = await manager.executeQuery(
+        hostId,
+        `SELECT TABLE_NAME FROM QSYS2.SYSTABLES WHERE TABLE_SCHEMA = '${library}' AND TABLE_NAME LIKE 'QAPM%'`,
+        [], undefined, undefined, 1000
+      );
+      const foundTables = probeRes.data.map(r => r.TABLE_NAME.trim());
+      if (foundTables.length > 0) {
+        console.error(`🔍 [探測結果] 您的帳號在 "${library}" 中實際只能看見以下 ${foundTables.length} 張表:`);
+        console.error(`   ${foundTables.join(", ")}`);
+        console.error(`   (若這是公共主機如 pub400，通常代表您沒有足夠權限存取系統級別的效能表)`);
+      } else {
+        console.error(`🔍 [探測結果] 您的帳號在 "${library}" 中完全找不到任何 QAPM 開頭的表。請確認 Library 名稱是否正確。`);
+      }
+    } catch (e) {
+      console.error(`🔍 [探測結果] 無法探測現有表格: ${e.message}`);
+    }
+
     console.error(
       `💡 [解決指引]:\n` +
         `  1. 確認 --lib 或 hosts_config.json 的 library 名稱是否正確\n` +
