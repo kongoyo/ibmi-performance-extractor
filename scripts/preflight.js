@@ -266,11 +266,14 @@ export function loadHostConfig(hostIdArg, args = {}) {
  * {YOUR_IBMI_HOST_IP_OR_DNS} is accepted as an alias of {host} so the
  * placeholder text in hosts_config.json.example can be used verbatim.
  */
-function substituteTokens(str, hostId, hostConfig) {
+function substituteTokens(str, hostId, hostConfig, library = "QPFRDATA", dateStr = "UNKNOWN") {
+  const safeDate = dateStr.replace(/\//g, "-");
   return str
     .replace(/\{host\}/g, hostConfig.host)
     .replace(/\{YOUR_IBMI_HOST_IP_OR_DNS\}/g, hostConfig.host)
-    .replace(/\{hostId\}/g, hostId);
+    .replace(/\{hostId\}/g, hostId)
+    .replace(/\{lib\}/g, library)
+    .replace(/\{date\}/g, safeDate);
 }
 
 /**
@@ -279,19 +282,16 @@ function substituteTokens(str, hostId, hostConfig) {
  * the skill package); absolute entries pass through unchanged. Entries may
  * contain {host}/{hostId} tokens to split output per target machine.
  */
-export function resolveOutputDirs(hostConfig, hostId) {
-  const raw =
-    Array.isArray(hostConfig.outputDirs) && hostConfig.outputDirs.length
-      ? hostConfig.outputDirs
-      : ["outputs/{host}/"];
-  const dirs = raw.map((d) => {
-    const substituted = substituteTokens(d, hostId, hostConfig);
-    return path.isAbsolute(substituted)
-      ? substituted
-      : path.join(SKILL_ROOT, substituted);
-  });
-  for (const dir of dirs) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  return dirs;
+export function resolveDataAndOutputDirs(hostConfig, hostId, library, dateStr) {
+  // Enforce Symmetric Dual-Tier Architecture
+  const dataRaw = `data/{host}/{lib}/{date}/`;
+  const outRaw = `outputs/{host}/{lib}/{date}/`;
+  
+  const dataDir = path.join(SKILL_ROOT, substituteTokens(dataRaw, hostId, hostConfig, library, dateStr));
+  const outDir = path.join(SKILL_ROOT, substituteTokens(outRaw, hostId, hostConfig, library, dateStr));
+  
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.mkdirSync(outDir, { recursive: true });
+  
+  return { dataDir, outDir };
 }

@@ -1,11 +1,24 @@
-# RCA 根因診斷執行原則
+# RCA 根因診斷執行原則 (Deep Module Workflow)
 
-當使用者要求對特定時段進行根因分析時，AI 應主動透過 `SourceManager` 連線至 IBM i，依序從以下五個維度取得佐證證據，並以「時間、Job、影響時段」為三個必要敘述要素組成 RCA 報告：
+當使用者要求對特定時段或特定 Job 進行根因分析時，AI 必須遵循「**深度模組 (Deep Module)**」架構原則：**由腳本負責自動化收集數據，AI 只專注於數據分析與診斷報告撰寫。**
 
-1. **系統層次時序**：查詢目標 Interval 前後 ±2 個區間的系統摘要（交易數、回應時間、CPU、分頁缺失），建立時序背景。
-2. **Job 負載排行**：對目標 Interval 查詢 Top 15 高負載 Job，依目標指標（I/O 次數、分頁缺失、CPU）排序。
-3. **OS 層次診斷**：對排行前列的 Job 查詢 OS 層次統計，識別 Native I/O vs SQL、子系統歸屬、交易模式。
-4. **Pool 聚合分析**：按記憶體 Pool 彙總資源消耗，識別哪個 Pool 正在承受壓力。
-5. **跨時段趨勢**：查詢前後 10 個 Interval 的 Job 趨勢，判斷異常是突發性還是持續性。
+## 執行三部曲 (Workflow)
 
-> 詳細的查詢 SQL 範本與欄位對照，請參閱 `references/field_reference.md`。
+### Step 1: 呼叫資料收集器 (Data Collector)
+AI 絕對**不要**自己寫 SQL 去查資料或自己爬 JSON 檔。請直接呼叫專屬的 RCA 提取腳本：
+```bash
+node ./scripts/rca_extractor.js --host=<主機ID> --job=<Job名稱> --date=<日期, 例 07/13> --time=<時間, 例 12:45>
+```
+*此腳本會自動尋找對應的資料庫或快取，並將這 5 大維度（系統時序、Job 排行、OS 層次診斷、Pool 聚合、跨時段趨勢）的原始數據萃取出來。*
+
+### Step 2: 讀取上下文數據
+腳本執行成功後，會在終端機告訴您輸出的 Context 檔案路徑（通常位於 `outputs/<IP>/rca_context_<JOB>.md`）。
+請使用 `view_file` 工具讀取該 Context 檔案，獲取該 Job 在該時段的各種 Metrics 數據。
+
+### Step 3: 產出與歸檔最終報告
+基於獲取的 Context，撰寫一份包含「時間、Job、影響時段、診斷結論與修復建議」的 RCA Markdown 報告。
+**【強制規定】歸檔位置**：
+AI 必須將產出的最終報告檔案，**直接寫入至與該主機對應的 `outputs/` 目錄中**（例如 `outputs/<IP>/rca_report_<JOB>.md`）。
+絕對不可將其留在 AI 的暫存區或專案根目錄，以確保所有的效能分析報告都按照主機 IP 被妥善分類與歸檔。
+
+> 詳細的查詢 SQL 範本與欄位對照（若需手動除錯），請參閱 `references/field_reference.md`。

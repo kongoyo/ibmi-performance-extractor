@@ -44,7 +44,7 @@ export class PerformanceDataExtractor {
    * @param {number} maxDays - Maximum number of recent days to extract
    * @returns {Promise<Object>} An object containing dates, times, dataByDate, peakJobsByDate, and metricSamples
    */
-  async extractRecentDays(maxDays = 5) {
+  async extractSpecificDate(targetDateStr) {
     // 1. Get partitions
     const partitionRes = await this.dbManager.executeQuery(this.hostId, partitionQuery(this.library));
     let partitions = partitionRes.data.map((r) => r.PARTITION_NAME.trim());
@@ -69,6 +69,7 @@ export class PerformanceDataExtractor {
 
       const julian = julianMatch[1];
       const dateStr = julianToDateStr(julian);
+      if (dateStr !== targetDateStr) continue;
       dates.push(dateStr);
 
       // Initialize structures

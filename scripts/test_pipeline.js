@@ -8,7 +8,7 @@ import {
   checkPython,
   loadServices,
   loadHostConfig,
-  resolveOutputDirs,
+  resolveDataAndOutputDirs,
 } from "./preflight.js";
 import { checkSchema, checkDataSanity } from "./healthcheck.js";
 import { PerformanceDataExtractor } from "./extractor.js";
@@ -25,7 +25,12 @@ async function main() {
   const { hostId, hostConfig, configPath } = loadHostConfig(args.host, args);
   const library = args.lib || hostConfig.library || "QPFRDATA";
   const maxDays = args.maxDays ? parseInt(args.maxDays, 10) : (hostConfig.maxDays || 5);
-  const outputDirs = resolveOutputDirs(hostConfig, hostId);
+  if (!args.date) {
+    console.error("❌ 缺少必要參數！必須提供 --date (例如 --date=07/13) 以建立正確的目錄結構。");
+    process.exit(1);
+  }
+  const dateStrSafe = args.date.replace(/\//g, "-");
+  const { dataDir, outDir } = resolveDataAndOutputDirs(hostConfig, hostId, library, dateStrSafe);
 
   console.log(`📌 Host: ${hostConfig.host} (id: ${hostId})`);
   console.log(`📌 Library: ${library}`);
@@ -46,7 +51,7 @@ async function main() {
 
     // Extract data using the Deep Module
     const extractor = new PerformanceDataExtractor(manager, hostId, library);
-    const { dates, times, dataByDate, peakJobsByDate, metricSamples } = await extractor.extractRecentDays(maxDays);
+    const { dates, times, dataByDate, peakJobsByDate, metricSamples } = await extractor.extractSpecificDate(args.date);
 
     console.log(``);
     const dataQualityWarnings = checkDataSanity(metricSamples);
@@ -62,7 +67,7 @@ async function main() {
       dataQualityWarnings
     };
 
-    const jsonPath = path.join(outputDirs[0], `${hostId}_perf_all.json`);
+    const jsonPath = path.join(dataDir, `${hostId}_perf_all.json`);
     fs.writeFileSync(jsonPath, JSON.stringify(payload, null, 2));
     console.log(`\n✔ Saved consolidated performance JSON payload to: ${jsonPath}`);
 
@@ -72,15 +77,12 @@ async function main() {
     const reporterScript = path.join(SKILL_ROOT, "scripts", "generate_report.py");
 
     console.log(`\n📊 Generating HTML Report...`);
-    const generatedPaths = [];
-    for (const dir of outputDirs) {
-      const outPath = path.join(dir, `${hostUpper}_${libUpper}_Performance_Report.html`);
-      const rcaFlag = args.rca === "true" ? " --rca" : "";
-      const cmd = `${pythonCmd} "${reporterScript}" --input "${jsonPath}" --output "${outPath}" --host ${hostId} --lib ${library}${rcaFlag}`;
-      console.log(`Executing: ${cmd}`);
-      execSync(cmd, { encoding: "utf8" });
-      generatedPaths.push(outPath);
-    }
+    const outPath = path.join(outDir, `${hostUpper}_${libUpper}_Performance_Report.html`);
+    const rcaFlag = args.rca === "true" ? " --rca" : "";
+    const cmd = `${pythonCmd} "${reporterScript}" --input "${jsonPath}" --output "${outPath}" --host ${hostId} --lib ${library}${rcaFlag}`;
+    console.log(`Executing: ${cmd}`);
+    execSync(cmd, { encoding: "utf8" });
+    const generatedPaths = [outPath];
 
     console.log(`\n🎉 Success!`);
     generatedPaths.forEach(p => console.log(`📄 Report: ${p}`));
