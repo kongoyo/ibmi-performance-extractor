@@ -1,3 +1,5 @@
+# NOTE: Tot/Rsp/Usr thresholds below (70 / 2.0 / 50) are duplicated in
+# scripts/reportingThresholds.js for daily_digest.js/trend_report.js. Keep both in sync by hand.
 def generate_insights(key, abs_max, max_d, abs_max_time):
     """
     Generates dynamic analysis and recommendations based on metric key and its absolute maximum.

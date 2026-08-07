@@ -18,6 +18,16 @@
 
 官方文件 Notes 3/6 提到：multipath 磁碟單元會有多筆記錄（每個路徑一筆），其中 `DSIDLC`/`DSIDLT`/`DSSK1`~`DSSK6`/`DSBUFO`/`DSBUFU`/`DSDCRH`/`DSDCPH`/`DSDCWH`/`DSDCFW` 等欄位的值**會在同一顆磁碟的每個路徑記錄中重複出現**（因為這些是裝置層級而非路徑層級的計數器）。目前 `field_reference.md` 的 High Disk 公式用 `MAX()` 取所有 ARM 中最大使用率，不涉及加總，所以不受此陷阱影響；但若未來改成「加總」或「平均」全部磁碟的某個計數器，必須先確認該欄位是路徑層級還是裝置層級，避免 multipath 磁碟的重複值把加總結果灌水。
 
+## ❌ 重大修正（2026-08-08）：`DSARM` 不是唯一識別碼，下方「已用於磁碟識別」的說法是錯的
+
+下方完整欄位清單原本把 `DSARM` 標記為「唯一識別碼，系統分配」並打勾「已用於磁碟識別」——**這個說法從未經過實測，是錯的**。
+
+**查證方式**：連線 clark75 `KTB.QAPMDISK`（member `Q194000017`，INTNUM=31，2026-08-08），執行 `SELECT COUNT(*), COUNT(DISTINCT TRIM(DSARM))`，得到 280 筆記錄、僅 70 個相異 `DSARM` 值（每個值恰好重複 4 次）。進一步以 `DSARM='0028'` 撈出完整 4 筆記錄，`DSDRN`（Device Resource Name）分別為 `DMP560`/`DMP553`/`DMP556`/`DMP557`，且 `DSSRVT`（Disk service time）四筆完全不同（74620/66361/74102/65608），證明這是**四顆不同的實體磁碟**共用同一個 `DSARM` 編號，不是同一顆磁碟的 multipath 重複記錄（multipath 重複記錄的計數器值應該相同，這裡明顯不同）。改用 `SELECT COUNT(*), COUNT(DISTINCT TRIM(DSDRN))` 核對，兩者相等（280=280），證實 `DSDRN` 才是本環境（SAN-attached 儲存）真正的唯一鍵；`DSARM` 在此環境代表的比較像是 RAID array/rank 分組，一個 array 底下有多顆實體磁碟。已收錄進 `validate_metrics.js` Test Area 8(b)，並修正 `scripts/queries.js` 的 `diskArmQuery`（改用 `DSDRN` 當主鍵，`DSARM` 降級為輔助分組欄位）。
+
+**影響範圍**：這個錯誤發生在磁碟熱點報告（`scripts/disk_hotspot_scan.js`）尚未正式對外使用前就被發現並修正，未影響任何已發布的分析結論；`field_reference.md` 既有的 High Disk 公式（`misumSummaryQuery` 裡的 `MAX()`）本來就不依賴 `DSARM` 唯一性，不受影響。
+
+**教訓**：`DSARM` 的官方說明文字（"Disk unit (arm) number: A unique identifier assigned by the system"）看起來完全合理、有official文件佐證，但在本環境（SAN-attached 儲存）實測後發現與描述不符——這與 `JBPAGF` 的教訓是同一種模式：官方說明文字合理，不代表在特定環境下語意如文件所述。任何要拿欄位當「唯一識別碼」使用的假設，都必須像本次一樣先用 `COUNT(*) = COUNT(DISTINCT ...)` 實測驗證，不能只看文件說明就採信。
+
 ---
 
 ## 完整欄位清單
@@ -29,9 +39,9 @@
 | `INTSEC` | Elapsed interval seconds。 | PD (7,0) |
 | `IOPRN` | IOP resource name。 | C (10) |
 | `DIOPID` | Reserved。 | C (1) |
-| `DSARM` | Disk unit (arm) number：唯一識別碼，系統分配。✅ 已用於磁碟識別，見 `field_reference.md`。 | C (4) |
+| `DSARM` | Disk unit (arm) number。❌ **不是唯一識別碼**（官方文件說是，但本環境實測不是——見上方「重大修正」）：可能對應同一 RAID array/rank 下的多顆實體磁碟。僅供分組參考，不可當主鍵。 | C (4) |
 | `DSTYPE` | Disk unit type（如 4326、2105）。 | C (4) |
-| `DSDRN` | Device resource name（multipath 磁碟例外，見 Notes）。 | C (10) |
+| `DSDRN` | Device resource name。✅ **本環境實測確認為真正唯一識別碼**（2026-08-08，見上方「重大修正」；`COUNT(*) = COUNT(DISTINCT DSDRN)` 逐 interval 核對通過），已用於磁碟熱點報告的主鍵，見 `scripts/queries.js` 的 `diskArmQuery`。multipath 磁碟例外，見 Notes。 | C (10) |
 | `DSSCAN` | Search string commands 數；不支援的磁碟類型恆為 0。 | PD (5,0) |
 | `DSBLKR`/`DSBLKW` | Blocks read / written（block = 一個磁區）。 | PD (11,0) |
 | `DSIDLC`/`DSIDLT` | Processor idle loop counter / time（百分之一微秒）；無專屬磁碟處理器的類型恆為 0；同控制器下的磁碟間會重複（見 Multipath 陷阱）。 | PD (11,0) |

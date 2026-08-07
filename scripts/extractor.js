@@ -1,4 +1,4 @@
-import { partitionQuery, intCpuQuery, misumSummaryQuery, jobsQuery } from "./queries.js";
+import { partitionQuery, intCpuQuery, misumSummaryQuery, jobsQuery, diskArmQuery } from "./queries.js";
 import { rankPeakJobs } from "./jobRanker.js";
 
 // Helper to convert Julian Day of Year to MM/DD (non-leap year)
@@ -40,26 +40,26 @@ export class PerformanceDataExtractor {
   }
 
   /**
-   * Extract performance data for the latest N days
-   * @param {number} maxDays - Maximum number of recent days to extract
+   * Extract performance data for one or more specific dates (e.g. a single
+   * date, or every date in a --dateFrom/--dateTo range expanded by the caller).
+   * @param {string[]} targetDates - "MM/DD" strings to extract; partitions for
+   *   any other date found in the library are skipped.
    * @returns {Promise<Object>} An object containing dates, times, dataByDate, peakJobsByDate, and metricSamples
    */
-  async extractSpecificDate(targetDateStr) {
-    // 1. Get partitions
+  async extractDates(targetDates) {
+    // 1. Get all partitions available in the library
     const partitionRes = await this.dbManager.executeQuery(this.hostId, partitionQuery(this.library));
-    let partitions = partitionRes.data.map((r) => r.PARTITION_NAME.trim());
+    const partitions = partitionRes.data.map((r) => r.PARTITION_NAME.trim());
 
     if (partitions.length === 0) {
       throw new Error("❌ No partitions found!");
     }
 
-    if (partitions.length > maxDays) {
-      partitions = partitions.slice(0, maxDays);
-    }
-
+    const targetDateSet = new Set(targetDates);
     const dates = [];
     const dataByDate = {};
     const peakJobsByDate = {};
+    const diskArmsByDate = {};
     const metricSamples = { Count: [], Rsp: [], Tot: [], Int: [], Bch: [], Dsk: [], Usr: [] };
 
     // 2. Loop through partitions and extract
@@ -69,7 +69,7 @@ export class PerformanceDataExtractor {
 
       const julian = julianMatch[1];
       const dateStr = julianToDateStr(julian);
-      if (dateStr !== targetDateStr) continue;
+      if (!targetDateSet.has(dateStr)) continue;
       dates.push(dateStr);
 
       // Initialize structures
@@ -138,9 +138,39 @@ export class PerformanceDataExtractor {
 
       // Query and Rank Jobs
       const jobsRes = await this.dbManager.executeQuery(this.hostId, jobsQuery(aliasJobl), [], undefined, undefined, 10000);
-      
+
       // Delegate ranking to internal module
       peakJobsByDate[dateStr] = rankPeakJobs(jobsRes.data, intnumToTime);
+
+      // Query top-5-busiest-disk-unit-per-interval detail (not job-scoped, so
+      // kept separate from peakJobsByDate; keyed by time like peakJobs).
+      // `drn` (device resource name) is the unique per-disk-unit identity —
+      // `arm_id` is NOT unique (empirically confirmed 2026-08-08: one DSARM
+      // value can span multiple physically distinct disks in a SAN-attached
+      // environment), kept only as secondary array/rank grouping context. See
+      // the comment on diskArmQuery in queries.js.
+      const diskArmRes = await this.dbManager.executeQuery(this.hostId, diskArmQuery(aliasDisk), [], undefined, undefined, 10000);
+      const diskArmsForDate = {};
+      diskArmRes.data.forEach((r) => {
+        const intVal = parseInt(r.INTNUM, 10);
+        const timeKey = intnumToTime[intVal];
+        if (!timeKey) return;
+        if (!diskArmsForDate[timeKey]) diskArmsForDate[timeKey] = [];
+        diskArmsForDate[timeKey].push({
+          drn: r.DRN,
+          arm_id: r.ARM_ID,
+          busy_pct: parseInt(r.BUSY_PCT, 10),
+          reads: parseInt(r.READS, 10) || 0,
+          writes: parseInt(r.WRITES, 10) || 0,
+          srvt_ms: parseFloat(r.SRVT_MS) || 0,
+          wait_ms: parseFloat(r.WAIT_MS) || 0,
+          cache_fast_writes: parseInt(r.CACHE_FAST_WRITES, 10) || 0,
+        });
+      });
+      // Defensive re-sort by busy% descending within each interval (SQL ORDER BY
+      // already guarantees this, but mirrors rankPeakJobs's own defensive re-sort).
+      Object.values(diskArmsForDate).forEach((arms) => arms.sort((a, b) => b.busy_pct - a.busy_pct));
+      diskArmsByDate[dateStr] = diskArmsForDate;
     }
 
     return {
@@ -148,6 +178,7 @@ export class PerformanceDataExtractor {
       times: this.standardTimes,
       dataByDate,
       peakJobsByDate,
+      diskArms: diskArmsByDate,
       metricSamples
     };
   }

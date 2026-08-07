@@ -1,0 +1,34 @@
+{
+  "name": "ibmi-performance-extractor",
+  "version": "1.0.0",
+  "description": "這個專案 / Agent Skill 專門用於指導 AI Agent 與開發者自動擷取 IBM i (AS/400) 的 Collection Services 效能數據，並將其視覺化為精美的 HTML 互動式報表，甚至進行自動化的 RCA (Root Cause Analysis) 根因診斷。",
+  "main": "index.js",
+  "directories": {
+    "example": "examples"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "extract": "node ./scripts/test_pipeline.js",
+    "validate": "node ./scripts/validate_metrics.js",
+    "rca": "node ./scripts/rca_extractor.js",
+    "anomaly": "node ./scripts/anomaly_scan.js",
+    "digest": "node ./scripts/daily_digest.js",
+    "trend": "node ./scripts/trend_report.js",
+    "disk-hotspot": "node ./scripts/disk_hotspot_scan.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kongoyo/ibmi-performance-extractor.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/kongoyo/ibmi-performance-extractor/issues"
+  },
+  "homepage": "https://github.com/kongoyo/ibmi-performance-extractor#readme",
+  "dependencies": {
+    "@ibm/ibmi-mcp-server": "^0.5.1"
+  }
+}

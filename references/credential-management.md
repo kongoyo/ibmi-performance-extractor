@@ -21,10 +21,10 @@
 欄位說明：
 - `library`：未帶 `--lib` 參數時使用的預設 Library。
 - `maxDays`：未帶 `--maxDays` 參數時，最多擷取的成員（天）數，預設 5。
-- `outputDirs`：報表與 JSON payload 的輸出目錄清單（可多個）。相對路徑會解析到 skill 根目錄下（預設 `["outputs/{host}/"]`）；絕對路徑（如 `"C:/Users/<you>/Downloads"`）會原樣使用。**輸出位置一律由此設定，程式碼中不得寫死任何磁碟路徑。**
+- `outputDirs`：報表與 JSON payload 的輸出目錄清單（可多個）。相對路徑會解析到 skill 根目錄下；絕對路徑（如 `"C:/Users/<you>/Downloads"`）會原樣使用。**輸出位置一律由此設定，程式碼中不得寫死任何磁碟路徑。**內建預設樣板為 `data/{hostId}/{lib}/` 與 `outputs/{hostId}/{lib}/`（以 `hostId` 而非原始 IP 命名，避免真實 IP 被寫入已版控的檔案路徑；同一 Library 的資料視為同一資料池，不再依日期切分資料夾，日期改由檔名如 `perf_0714.json` / `perf_0712_to_0714.json` 區分）。
   路徑字串可用以下 token，執行時會自動代換：
-  - `{host}`（或範例檔中使用的 `{YOUR_IBMI_HOST_IP_OR_DNS}`）：該主機設定的 `host` 值
-  - `{hostId}`：`hosts_config.json` 中的主機 id（JSON key）
+  - `{host}`（或範例檔中使用的 `{YOUR_IBMI_HOST_IP_OR_DNS}`）：該主機設定的 `host` 值（原始 IP/DNS）
+  - `{hostId}`：`hosts_config.json` 中的主機 id（JSON key）——內建樣板預設使用此 token
 
 ## 2. 環境變數備援
 若未配置 JSON 檔，程式將自動嘗試從環境變數載入，變數格式為：

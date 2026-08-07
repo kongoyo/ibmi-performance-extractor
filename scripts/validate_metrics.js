@@ -294,6 +294,102 @@ async function main() {
     }
 
     // ----------------------------------------------------
+    // Test Area 7: Seize/Wait Time (JBSZWT) — first use of this field in the
+    // codebase, NOT YET empirically validated. Per this project's 查證規範
+    // (references/field_reference.md), no "expected" value may be invented —
+    // this only surfaces the raw SUM(JBSZWT) ranking so a human can manually
+    // cross-check it against a live WRKACTJOB Function/LOCKWAIT observation or
+    // Job Wait Statistics screen captured at the same interval. Once verified,
+    // replace this block with a proper assertEqual() benchmark (mirroring Test
+    // Area 5/6) and record the verification in field_reference.md's 變更記錄.
+    // ----------------------------------------------------
+    console.log(`\n📋 [Test Area 7] Seize/Wait Time (JBSZWT) — Manual Verification Required`);
+    console.log(`  ${yellow}⚠️ 此欄位尚未實測驗證，以下僅為原始查詢結果，請人工對照 WRKACTJOB 的 Function/LOCKWAIT 或 Job Wait Statistics 畫面確認正確性後，再改寫為 assertEqual() 並更新 field_reference.md。${reset}`);
+    const szwtRes = await manager.executeQuery(hostId, `
+      SELECT JBNAME, JBUSER, JBNBR, SUM(JBSZWT) AS TOTAL_SZWT_MS
+      FROM QTEMP.V_QAPMJOBL_197
+      WHERE INTNUM = 44
+      GROUP BY JBNAME, JBUSER, JBNBR
+      ORDER BY TOTAL_SZWT_MS DESC
+      FETCH FIRST 10 ROWS ONLY
+    `);
+    if (szwtRes.data.length > 0) {
+      console.log(`  07/16 11:00 (INTNUM 44) Top 10 Jobs by Seize/Wait Time:`);
+      szwtRes.data.forEach(r => {
+        console.log(`    ${String(r.JBNAME).trim()}/${String(r.JBUSER).trim()}/${String(r.JBNBR).trim()}: SZWT_MS = ${r.TOTAL_SZWT_MS}`);
+      });
+    } else {
+      console.error(`  [${red}FAIL${reset}] INTNUM 44 沒有任何 Job 資料`);
+      failedTests++;
+    }
+
+    // ----------------------------------------------------
+    // Test Area 8: Per-Disk-Unit Detail (diskArmQuery, disk hot-spot report)
+    // Part (a) is a genuine assertEqual: the per-unit breakout's MAX(BUSY_PCT)
+    // across all units at a given interval must equal the already-validated
+    // system-wide MAX value from Test Area 6 (same CEILING(...) formula, same
+    // green-screen-verified benchmark — this checks the per-unit query didn't
+    // change the aggregate result, not a new empirical claim).
+    // Part (b) is a genuine assertEqual too, added 2026-08-08 after discovering
+    // DSARM is NOT a unique per-disk-unit key in this environment: it repeats
+    // 4x per interval (one clark75/KTB INTNUM 31 sample had 280 rows / 70
+    // distinct DSARM values), grouping physically distinct disks (different
+    // DSDRN, different DSSRVT) under the same ARM number — contradicts
+    // qapmdisk_fields.md's prior (incorrect, now-corrected) claim that DSARM is
+    // a unique identifier. DSDRN (device resource name) IS unique — this
+    // asserts COUNT(DISTINCT DSDRN) == COUNT(*) per interval, which is exactly
+    // the property diskArmQuery's per-unit ranking depends on.
+    // Part (c) is a manual-verification dump for DSSRVT/DSWT/DSDCFW — these
+    // three fields have never had their VALUES (not just their identity key)
+    // validated in this codebase; per 查證規範, no "expected" value may be
+    // invented, so this only surfaces raw numbers for a human to cross-check
+    // against a live WRKDSKSTS screen at the same moment.
+    // ----------------------------------------------------
+    console.log(`\n📋 [Test Area 8] Per-Disk-Unit Detail (Green Screen Benchmark + Manual Verification)`);
+    console.log(`  (a) Per-unit breakout MAX(BUSY_PCT) must match Test Area 6's already-validated system-wide MAX:`);
+    for (const expected of diskUtilBenchmark) {
+      const alias = diskAliases[expected.member];
+      const armRes = await manager.executeQuery(hostId, `
+        SELECT COALESCE(MAX(CASE WHEN DSSMPL > 0 THEN CAST(CEILING((1.0 - DSNBSY * 1.0 / DSSMPL) * 100) AS INTEGER) ELSE 0 END), 0) AS MAX_BUSY
+        FROM ${alias}
+        WHERE INTNUM = ${expected.intnum}
+      `);
+      const actual = armRes.data.length > 0 ? armRes.data[0].MAX_BUSY : null;
+      assertEqual(`  ${expected.time} (INTNUM ${expected.intnum}) Per-unit breakout MAX(Busy%)`, actual, expected.dsk);
+    }
+
+    console.log(`\n  (b) DSDRN must be unique per disk unit per interval (DSARM is NOT — see comment above):`);
+    for (const expected of diskUtilBenchmark) {
+      const alias = diskAliases[expected.member];
+      const uniqRes = await manager.executeQuery(hostId, `
+        SELECT COUNT(*) AS TOTAL, COUNT(DISTINCT TRIM(DSDRN)) AS UNIQ_DRN
+        FROM ${alias}
+        WHERE INTNUM = ${expected.intnum}
+      `);
+      const row = uniqRes.data[0];
+      assertEqual(`  ${expected.time} (INTNUM ${expected.intnum}) DISTINCT(DSDRN) == COUNT(*)`, row.UNIQ_DRN, row.TOTAL);
+    }
+
+    console.log(`\n  (c) ${yellow}⚠️ DSSRVT/DSWT/DSDCFW 尚未實測驗證，以下僅為原始查詢結果，請人工對照 WRKDSKSTS 畫面確認正確性後，再改寫為 assertEqual() 並更新 field_reference.md。${reset}`);
+    const firstMember = diskUtilBenchmark[0];
+    const armDetailRes = await manager.executeQuery(hostId, `
+      SELECT TRIM(DSDRN) AS DRN, TRIM(DSARM) AS ARM_ID, DSRDS, DSWRTS, DSSRVT, DSWT, DSDCFW
+      FROM ${diskAliases[firstMember.member]}
+      WHERE INTNUM = ${firstMember.intnum}
+      ORDER BY DSSRVT DESC
+      FETCH FIRST 5 ROWS ONLY
+    `);
+    if (armDetailRes.data.length > 0) {
+      console.log(`  ${firstMember.time} (INTNUM ${firstMember.intnum}) Top 5 Disk Units by Service Time:`);
+      armDetailRes.data.forEach(r => {
+        console.log(`    DRN ${r.DRN} (ARM ${r.ARM_ID}): DSRDS=${r.DSRDS}, DSWRTS=${r.DSWRTS}, DSSRVT=${r.DSSRVT}, DSWT=${r.DSWT}, DSDCFW=${r.DSDCFW}`);
+      });
+    } else {
+      console.error(`  [${red}FAIL${reset}] INTNUM ${firstMember.intnum} 沒有任何磁碟單元資料`);
+      failedTests++;
+    }
+
+    // ----------------------------------------------------
     // Final Summary
     // ----------------------------------------------------
     console.log(`\n📊 ${yellow}Validation Summary:${reset}`);

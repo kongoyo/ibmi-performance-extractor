@@ -4,7 +4,7 @@
  */
 export function rankPeakJobs(allJobs, intnumToTime) {
   const peakJobs = {};
-  const metrics = ["Count", "Rsp", "Tot", "Int", "Bch", "Dsk", "Usr"];
+  const metrics = ["Count", "Rsp", "Tot", "Int", "Bch", "Dsk", "Usr", "Szwt"];
   metrics.forEach((m) => {
     peakJobs[m] = {};
   });
@@ -85,6 +85,21 @@ export function rankPeakJobs(allJobs, intnumToTime) {
           job_name: jobFull,
           user_name: j.USER_NAME,
           val1: parseInt(j.FAULTS, 10),
+          val2: parseFloat(j.CPU_MS),
+        });
+      }
+    }
+
+    // Szwt (Seize/Wait rank) -> val1: SZWT_MS, val2: CPU_MS
+    if (parseInt(j.SZWT_RANK, 10) <= 10) {
+      const m = "Szwt";
+      if (!peakJobs[m][timeKey]) peakJobs[m][timeKey] = [];
+      const jobFull = `${j.JOB_NAME}/${j.USER_NAME}/${j.JOB_NUMBER}`;
+      if (!peakJobs[m][timeKey].some((x) => x.job_name === jobFull)) {
+        peakJobs[m][timeKey].push({
+          job_name: jobFull,
+          user_name: j.USER_NAME,
+          val1: parseFloat(j.SZWT_MS),
           val2: parseFloat(j.CPU_MS),
         });
       }

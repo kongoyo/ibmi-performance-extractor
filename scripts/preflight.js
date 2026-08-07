@@ -85,26 +85,26 @@ const SERVICES_RELATIVE_CANDIDATES = [
 ];
 
 function resolveServicesFromNpmPackage() {
-  let require;
+  // Locate the package directory via node_modules resolution directly,
+  // rather than require.resolve("<pkg>/package.json"): the published
+  // package's "exports" map doesn't expose that subpath, so resolving
+  // it that way always fails even when the package is installed.
+  const require = createRequire(import.meta.url);
+  let searchPaths;
   try {
-    require = createRequire(path.join(process.cwd(), "package.json"));
+    searchPaths = require.resolve.paths("@ibm/ibmi-mcp-server") || [];
   } catch {
-    return null;
+    searchPaths = [];
   }
+  searchPaths = [...searchPaths, path.join(process.cwd(), "node_modules")];
 
-  let pkgJsonPath;
-  try {
-    pkgJsonPath = require.resolve("@ibm/ibmi-mcp-server/package.json", {
-      paths: [process.cwd()],
-    });
-  } catch {
-    return null;
-  }
-
-  const pkgRoot = path.dirname(pkgJsonPath);
-  for (const parts of SERVICES_RELATIVE_CANDIDATES) {
-    const candidate = path.join(pkgRoot, ...parts);
-    if (fs.existsSync(candidate)) return candidate;
+  for (const nodeModulesDir of searchPaths) {
+    const pkgRoot = path.join(nodeModulesDir, "@ibm", "ibmi-mcp-server");
+    if (!fs.existsSync(pkgRoot)) continue;
+    for (const parts of SERVICES_RELATIVE_CANDIDATES) {
+      const candidate = path.join(pkgRoot, ...parts);
+      if (fs.existsSync(candidate)) return candidate;
+    }
   }
   return null;
 }
@@ -261,8 +261,8 @@ export function loadHostConfig(hostIdArg, args = {}) {
 }
 
 /**
- * Substitutes {host}/{hostId} template tokens in an outputDirs entry.
- * {YOUR_IBMI_HOST_IP_OR_DNS} is accepted as an alias of {host} so the
+ * Substitutes {host}/{hostId}/{lib}/{date} template tokens in an outputDirs
+ * entry. {YOUR_IBMI_HOST_IP_OR_DNS} is accepted as an alias of {host} so the
  * placeholder text in hosts_config.json.example can be used verbatim.
  */
 function substituteTokens(str, hostId, hostConfig, library = "QPFRDATA", dateStr = "UNKNOWN") {
@@ -278,19 +278,24 @@ function substituteTokens(str, hostId, hostConfig, library = "QPFRDATA", dateStr
 /**
  * Resolves the report/JSON output directories for a host. Relative entries
  * resolve against SKILL_ROOT (so the default stays self-contained inside
- * the skill package); absolute entries pass through unchanged. Entries may
- * contain {host}/{hostId} tokens to split output per target machine.
+ * the skill package); absolute entries pass through unchanged.
+ *
+ * Directories are keyed by {hostId}/{lib} only — NOT by date. A library's
+ * extracted data is one continuous pool regardless of which date window a
+ * given run covers, so date/date-range is encoded in the filename instead
+ * (e.g. perf_0714.json vs perf_0712_to_0714.json) rather than the folder;
+ * that way a single-date run and a range run covering the same day can
+ * never collide/overwrite each other on disk.
  */
-export function resolveDataAndOutputDirs(hostConfig, hostId, library, dateStr) {
-  // Enforce Symmetric Dual-Tier Architecture
-  const dataRaw = `data/{host}/{lib}/{date}/`;
-  const outRaw = `outputs/{host}/{lib}/{date}/`;
-  
-  const dataDir = path.join(SKILL_ROOT, substituteTokens(dataRaw, hostId, hostConfig, library, dateStr));
-  const outDir = path.join(SKILL_ROOT, substituteTokens(outRaw, hostId, hostConfig, library, dateStr));
-  
+export function resolveDataAndOutputDirs(hostConfig, hostId, library) {
+  const dataRaw = `data/{hostId}/{lib}/`;
+  const outRaw = `outputs/{hostId}/{lib}/`;
+
+  const dataDir = path.join(SKILL_ROOT, substituteTokens(dataRaw, hostId, hostConfig, library));
+  const outDir = path.join(SKILL_ROOT, substituteTokens(outRaw, hostId, hostConfig, library));
+
   fs.mkdirSync(dataDir, { recursive: true });
   fs.mkdirSync(outDir, { recursive: true });
-  
+
   return { dataDir, outDir };
 }

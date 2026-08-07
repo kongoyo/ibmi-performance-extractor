@@ -20,6 +20,7 @@
 | 2026-08-06 | `QAPMDISK` High Disk 捨入方式 | 原用 `INTEGER(...)` 對百分比**無條件捨去**（truncate），與綠屏系統性地少 1（實測 20/20 樣本全部少 1，例如原始值 7.28% 綠屏顯示 8、9.17% 顯示 10）| 改用 `CEILING(...)`（無條件進位），不是 `ROUND`（四捨五入在 7.28%→7、9.17%→9 兩個樣本仍會算錯，證實不是單純捨入方式問題，而是 DSPPFRDTA 本身對磁碟使用率一律無條件進位）。已用兩份綠屏截圖（07/13 07:45~10:00、07/15 05:15~07:30）共 20 個 interval 核對，全部吻合，並收錄進 `validate_metrics.js` Test Area 6。 |
 | 2026-08-06 | Schema 跨版本驗證（非修正，記錄一次完整比對）| 使用者新增 `clark74`（IBM i 7.4）主機，連同既有 `clark75` 的 `KTB`（7.3）、`QPFRDATA`（7.5），三個環境比對本文件用到的 26 個欄位 | 26 個欄位在三個環境（7.3/7.4/7.5）**名稱、型別、長度完全一致**，零差異。唯一差異：`QAPMISUM` 總欄位數 7.4/7.5 是 153、7.3 是 152（多的那 1 欄不是本文件用到的）。記錄於 `field_manifest.json` 的 `_schemaVerifiedEnvironments`。另外意外重現了 `QPFRDATA.QAPMJOBL` 的 `SYSPARTITIONSTAT` 目錄失準問題（見 `memory/field-mapping-hardening-plan.md`）——這次在 clark74 這台不同的物理主機上一樣重現，代表這不是單一主機的巧合，較可能是 `QPFRDATA`（系統預設收集庫）這個層級的普遍特性。 |
 | 2026-08-06 | `QAPMISUM.JBRSP` 單位描述（文件錯誤，公式與程式碼皆正確）| 本文件原寫「`JBRSP` 已是秒，`/(JBNTR*1000.0)` 得毫秒」，經 IBM 官方文件（`references/qapmisum_fields.md`）比對發現與此矛盾（官方標示 `JBRSP` 是毫秒）。連線 clark75 `KTB.QAPMISUM`（member `Q197000038`，2026/07/16）撈取 INTNUM 1~10 的原始 `JBRSP`/`JBNTR`，並取得使用者提供的 `DSPPFRDTA` 選取時間間隔畫面（同一 member，含 `Rsp` 欄位 `.31`/`.06`/`.14`/`.02`/`.06`/`.00`/`.02`/`.10`/`.19`/`.06`）逐筆核對：`JBRSP/(JBNTR*1000.0)`（無條件捨去至小數點後兩位）與綠屏 `Rsp` 欄位 10/10 完全吻合（例如 INTNUM=1：`215183/(683*1000)=0.315`→截斷 `0.31`，螢幕顯示 `.31`）。 | 證實 `JBRSP` 原始值確實是**毫秒**（官方文件正確，本文件原「已是秒」的敘述錯誤），但**公式本身沒有 bug**——`JBRSP/(JBNTR*1000.0)` 算出來的結果單位是**秒**，不是文件原寫的「毫秒」；`generate_report.py` 也早已正確把 `Rsp` 這個 metric 標記為「秒」（第 223/273/280/802 行），不是 `ms`，程式碼沒有需要修正的地方。已修正下方「關鍵欄位」表格對 `JBRSP` 的單位描述與公式說明文字。 |
+| 2026-08-08 | `QAPMDISK.DSARM`（磁碟熱點報告 `diskArmQuery`，新功能開發階段發現，未曾對外發布） | `references/qapmdisk_fields.md` 原標記 `DSARM` 為「唯一識別碼，系統分配」並打勾「已驗證」，但這個標記從未真正實測過。連線 clark75 `KTB.QAPMDISK`（member `Q194000017`，INTNUM=31）執行 `SELECT COUNT(*), COUNT(DISTINCT TRIM(DSARM))`，280 筆記錄只有 70 個相異值（每個恰好重複 4 次）；取 `DSARM='0028'` 的 4 筆記錄比對，`DSDRN` 分別為 `DMP560`/`DMP553`/`DMP556`/`DMP557`、`DSSRVT` 四筆互不相同（74620/66361/74102/65608），證實是 4 顆不同實體磁碟共用同一 `DSARM`，不是 multipath 重複記錄（multipath 重複記錄的計數器應相同）。改用 `COUNT(*) = COUNT(DISTINCT TRIM(DSDRN))` 核對（280=280）確認 `DSDRN` 才是本環境真正唯一鍵。20 個 interval（跨兩個 member）全部核對通過，收錄於 `validate_metrics.js` Test Area 8(b)。 | `scripts/queries.js` 的 `diskArmQuery` 改用 `DSDRN` 當磁碟單元主鍵，`DSARM` 降級為輔助分組欄位（代表 RAID array/rank，不代表單一實體磁碟）；連動修正 `scripts/extractor.js`、`scripts/disk_hotspot_scan.js`。此欄位對應的磁碟熱點報告尚未對外發布過，此修正未影響任何已產出的分析結論。 |
 
 ---
 
@@ -109,7 +110,8 @@ const bchPct = Math.max(0, totPct - intPct); // 用 Tot 減 Int 反推，確保�
 | 欄位 | 說明 |
 |------|------|
 | `INTNUM` | 區間序號（JOIN key）|
-| `DSARM` | 磁碟 ARM 編號 |
+| `DSARM` | 磁碟 ARM 編號。❌ **不是唯一識別碼**（2026-08-08 實測，見下方變更記錄與 `qapmdisk_fields.md`）——同一 ARM 編號在本環境可能對應多顆不同實體磁碟（同一 RAID array/rank）。逐磁碟識別請用 `DSDRN` |
+| `DSDRN` | 裝置資源名稱（Device Resource Name）。✅ 本環境實測確認為真正唯一識別碼，磁碟熱點報告以此為主鍵 |
 | `DSNBSY` | 本區間磁碟閒置次數（Not Busy count）|
 | `DSSMPL` | 本區間取樣總次數（Sample count）|
 | `DSRDS` | Read operations |

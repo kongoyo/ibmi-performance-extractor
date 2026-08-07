@@ -31,8 +31,8 @@
 | `QAPMIDLC` | 包括 ISDN 資料鏈結控制檔登錄，並列出 IDLC 檔中的欄位。 |
 | `QAPMIOPD` | 列出 IOP 延伸資料檔中的欄位。 |
 | `QAPMISUM` | 包含間隔摘要資訊。（已用於 CPU/交易/回應時間/分頁缺失計算，見 `field_reference.md`） |
-| `QAPMJOBMI` | 包含使用 `*JOBMI` 種類收集的作業、主要及次要執行緒資料。 |
-| `QAPMJOBOS` | 包含系統工作特定的資料。（已用於 RCA 根因診斷，見 `field_reference.md`） |
+| `QAPMJOBMI` | 包含使用 `*JOBMI` 種類收集的作業、主要及次要執行緒資料。官方完整欄位對照見 `qapmjobmi_fields.md`。 |
+| `QAPMJOBOS` | 包含系統工作特定的資料。（已用於 RCA 根因診斷，見 `field_reference.md`）官方完整欄位對照見 `qapmjobos_fields.md`。 |
 | `QAPMJOBS` / `QAPMJOBL` | 提供 `QAPMJOBL` 檔案以與效能監視器相容，結合 `QAPMJOBMI` 與 `QAPMJOBOS` 的資料。（`QAPMJOBL` 已用於 Top Job 排行，見 `field_reference.md`） |
 | `QAPMJOBSR` | 包含已執行儲存或還原作業之工作的資料。 |
 | `QAPMJOBWT` | 包含工作、作業及執行緒等待狀況的相關資訊。 |
@@ -47,9 +47,9 @@
 | `QAPMMIOP` | 包括多功能 IOP 檔案項目，並列出多功能 IOP 檔案中的欄位。 |
 | `QAPMNRG` | 報告網路備用群組 (NRG) 效能資料，每個間隔每個 NRG 一筆記錄。 |
 | `QAPMNRGL` | 報告網路備援群組中 RDMA 鏈結的相關資訊，每個間隔每個群組每條鏈結一筆記錄。 |
-| `QAPMPOOL` / `QAPMPOOLL` | 提供 `QAPMPOOLL` 以容許「資料收集服務」與效能監視器之間的相容性；`QAPMPOOL` 由 `CVTPFRCOL` 轉換舊版資料時建立，「資料收集服務」本身不建立。 |
-| `QAPMPOOLB` | 包括主儲存區檔案項目，並列出系統儲存區的計數器。 |
-| `QAPMPOOLT` | 包括主要儲存區檔案項目，並列出儲存區的調整資訊。 |
+| `QAPMPOOL` / `QAPMPOOLL` | 提供 `QAPMPOOLL` 以容許「資料收集服務」與效能監視器之間的相容性；`QAPMPOOL` 由 `CVTPFRCOL` 轉換舊版資料時建立，「資料收集服務」本身不建立。官方完整欄位對照見 `qapmpool_qapmpooll_fields.md`。（`SKILL.md` 承諾的「Pool 狀態」分析目前尚未實作，本表是候選來源之一，見該檔頭部說明） |
+| `QAPMPOOLB` | 包括主儲存區檔案項目，並列出系統儲存區的計數器。官方完整欄位對照見 `qapmpoolb_fields.md`。 |
+| `QAPMPOOLT` | 包括主要儲存區檔案項目，並列出儲存區的調整資訊。官方完整欄位對照見 `qapmpoolt_fields.md`。 |
 | `QAPMPPP` | 包括「點對點通訊協定 (PPP)」檔案中的欄位。 |
 | `QAPMRESP` | 包括本端工作站回應時間檔案項目，包含根據本端工作站控制器內所收集資料的異動資訊。 |
 | `QAPMSAP` | 包含服務存取點 (SAP) 檔案項目，並列出 SAP 檔案中的欄位。 |
