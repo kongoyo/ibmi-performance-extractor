@@ -14,7 +14,7 @@ export function rankPeakJobs(allJobs, intnumToTime) {
     const timeKey = intnumToTime[intVal];
     if (!timeKey) return; // Skip if no matching interval summary time
 
-    // Tot, Int, Bch (CPU rank)
+    // Tot, Int, Bch (CPU rank) -> val1: CPU_MS, val2: IO_COUNT
     if (parseInt(j.CPU_RANK, 10) <= 10) {
       ["Tot", "Int", "Bch"].forEach((m) => {
         if (!peakJobs[m][timeKey]) peakJobs[m][timeKey] = [];
@@ -23,14 +23,14 @@ export function rankPeakJobs(allJobs, intnumToTime) {
           peakJobs[m][timeKey].push({
             job_name: jobFull,
             user_name: j.USER_NAME,
-            cpu_ms: parseFloat(j.CPU_MS),
-            faults: parseInt(j.FAULTS, 10),
+            val1: parseFloat(j.CPU_MS),
+            val2: parseInt(j.IO_COUNT, 10),
           });
         }
       });
     }
 
-    // Count (Transaction count rank)
+    // Count (Transaction count rank) -> val1: TRANS_COUNT, val2: RESPONSE_SEC
     if (parseInt(j.TRANS_RANK, 10) <= 10) {
       const m = "Count";
       if (!peakJobs[m][timeKey]) peakJobs[m][timeKey] = [];
@@ -39,13 +39,13 @@ export function rankPeakJobs(allJobs, intnumToTime) {
         peakJobs[m][timeKey].push({
           job_name: jobFull,
           user_name: j.USER_NAME,
-          cpu_ms: parseInt(j.TRANS_COUNT, 10),
-          faults: parseFloat(j.RESPONSE_SEC),
+          val1: parseInt(j.TRANS_COUNT, 10),
+          val2: parseFloat(j.RESPONSE_SEC),
         });
       }
     }
 
-    // Rsp (Response time rank)
+    // Rsp (Response time rank) -> val1: RESPONSE_SEC, val2: IO_COUNT
     if (parseInt(j.RSP_RANK, 10) <= 10) {
       const m = "Rsp";
       if (!peakJobs[m][timeKey]) peakJobs[m][timeKey] = [];
@@ -54,13 +54,13 @@ export function rankPeakJobs(allJobs, intnumToTime) {
         peakJobs[m][timeKey].push({
           job_name: jobFull,
           user_name: j.USER_NAME,
-          cpu_ms: parseFloat(j.RESPONSE_SEC),
-          faults: parseInt(j.TRANS_COUNT, 10),
+          val1: parseFloat(j.RESPONSE_SEC),
+          val2: parseInt(j.IO_COUNT, 10),
         });
       }
     }
 
-    // Dsk (IO rank)
+    // Dsk (IO rank) -> val1: IO_COUNT, val2: CPU_MS
     if (parseInt(j.IO_RANK, 10) <= 10) {
       const m = "Dsk";
       if (!peakJobs[m][timeKey]) peakJobs[m][timeKey] = [];
@@ -69,13 +69,13 @@ export function rankPeakJobs(allJobs, intnumToTime) {
         peakJobs[m][timeKey].push({
           job_name: jobFull,
           user_name: j.USER_NAME,
-          cpu_ms: parseFloat(j.CPU_MS),
-          faults: parseInt(j.IO_COUNT, 10),
+          val1: parseInt(j.IO_COUNT, 10),
+          val2: parseFloat(j.CPU_MS),
         });
       }
     }
 
-    // Usr (Page fault rank)
+    // Usr (Page fault rank) -> val1: FAULTS, val2: CPU_MS
     if (parseInt(j.FAULT_RANK, 10) <= 10) {
       const m = "Usr";
       if (!peakJobs[m][timeKey]) peakJobs[m][timeKey] = [];
@@ -84,25 +84,19 @@ export function rankPeakJobs(allJobs, intnumToTime) {
         peakJobs[m][timeKey].push({
           job_name: jobFull,
           user_name: j.USER_NAME,
-          cpu_ms: parseFloat(j.CPU_MS),
-          faults: parseInt(j.FAULTS, 10),
+          val1: parseInt(j.FAULTS, 10),
+          val2: parseFloat(j.CPU_MS),
         });
       }
     }
   });
 
-  // Sort arrays in descending order in JS to guarantee correctness
+  // Sort each array correctly (since DB might return them out of order due to Top 10 nature)
+  // We sort by val1 descending.
   metrics.forEach((m) => {
-    for (const timeKey in peakJobs[m]) {
-      const arr = peakJobs[m][timeKey];
-      if (m === "Dsk" || m === "Usr") {
-        arr.sort((a, b) => b.faults - a.faults);
-      } else {
-        arr.sort((a, b) => b.cpu_ms - a.cpu_ms);
-      }
-      // Slice to top 10
-      peakJobs[m][timeKey] = arr.slice(0, 10);
-    }
+    Object.keys(peakJobs[m]).forEach((timeKey) => {
+      peakJobs[m][timeKey].sort((a, b) => b.val1 - a.val1);
+    });
   });
 
   return peakJobs;

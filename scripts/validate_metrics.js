@@ -173,14 +173,13 @@ async function main() {
       SELECT
         JBNAME,
         JBNTR,
-        JBRSP,
-        JBRSP / 1.0 AS RESPONSE_SEC
+        JBRSP / 1000.0 AS RESPONSE_SEC
       FROM QTEMP.V_QAPMJOBL_194
       WHERE INTNUM = 51 AND JBNAME = 'HN040130A' AND JBNBR = '730390'
     `);
 
     if (rcaRes.data.length > 0) {
-      assertEqual("07/13 12:45 Job HN040130A Response Time (Sec)", rcaRes.data[0].RESPONSE_SEC, 14271.93, 0.05);
+      assertEqual("07/13 12:45 Job HN040130A Response Time (Sec)", rcaRes.data[0].RESPONSE_SEC, 14.27, 0.05);
     } else {
       console.error(`  [${red}FAIL${reset}] 07/13 12:45 Job HN040130A data not found`);
       failedTests++;

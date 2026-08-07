@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$lib 效能分析報告</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+${css_content}
+</style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>$lib 效能分析報告</h1>
+            <p>IBM i Collection Services ($lib) 多日趨勢與動態工作負載觀測指標</p>
+            <div class="meta-badges">
+                <span class="badge">💻 主機: $host</span>
+                <span class="badge">📚 Library: $lib</span>
+                <span class="badge">📅 日期範圍: $date_range</span>
+                <span class="badge">⏱️ 採樣頻率: 15 分鐘 (96 Interval/天)</span>
+            </div>
+        </header>
+
+        $warnings_banner
+
+        <div class="dashboard-grid">
+            $cards_html
+        </div>
+
+        $rca_section
+
+        <footer>
+            <p>本報告由 IBM i Performance Reporter 系統自動產出 | Data Source: $lib (15-min Intervals)</p>
+        </footer>
+    </div>
+
+        <script>
+        const times = $times_js;
+        const dates = $dates_js;
+        const rawData = $raw_data_js;
+        const peakJobsByDate = $peak_jobs_js;
+        const metricsConfig = $metrics_config_js;
+    </script>
+    <script>
+    $js_content
+    </script>
+</body>
+</html>

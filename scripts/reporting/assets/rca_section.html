@@ -1,0 +1,169 @@
+        <!-- Root Cause Analysis (RCA) Section Container -->
+        <div style="margin-top: 3rem; display: flex; flex-direction: column; gap: 2rem;">
+            <div style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 1rem;">
+                <h2 style="font-family: 'Outfit', sans-serif; font-size: 2rem; font-weight: 700; color: #fbbf24; display: flex; align-items: center; gap: 0.5rem; margin: 0;">
+                    🔍 核心異常效能根因診斷報告 (Root Cause Analysis - RCA)
+                </h2>
+                <p style="color: var(--text-secondary); font-size: 0.95rem; margin-top: 0.25rem;">
+                    針對採樣區間內偵測到的極端效能偏離與系統資源暴增事件進行底層狀態剖析與最佳化建議
+                </p>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                <!-- Case 1: 07/13 HN040130A (Response Time) -->
+                <div class="rca-card" style="background: var(--card-bg); backdrop-filter: blur(12px); border-radius: 20px; border: 1px solid var(--card-border); padding: 1.75rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3); display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                        <div style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.75rem; margin-bottom: 1.25rem;">
+                            <span style="background: rgba(244, 63, 94, 0.1); color: #f43f5e; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">Case 01: 交易回應極端延遲</span>
+                            <h3 style="font-size: 1.3rem; font-weight: 700; color: var(--text-primary); margin-top: 0.5rem; margin-bottom: 0;">
+                                Job: HN040130A (730390) | 07/13 12:45
+                            </h3>
+                            <p style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 0.25rem;">
+                                交易次數: 1 次 | 回應時間: 14,271.93 秒 (約 3.96 小時) | I/O: 7,103,535 次
+                            </p>
+                        </div>
+                        
+                        <div style="margin-bottom: 1.25rem;">
+                            <h4 style="font-size: 0.95rem; color: var(--accent-blue); margin-bottom: 0.5rem; font-weight: 600;">📊 生命週期等待時間拆解</h4>
+                            <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; background: rgba(0,0,0,0.2); border-radius: 8px; overflow: hidden; margin-bottom: 1rem;">
+                                <thead>
+                                    <tr style="background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.08); text-align: left; color: var(--text-secondary); font-size: 0.75rem;">
+                                        <th style="padding: 0.5rem;">等待狀態</th>
+                                        <th style="padding: 0.5rem; text-align: right;">累積時間</th>
+                                        <th style="padding: 0.5rem; text-align: right;">佔比 (%)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                                        <td style="padding: 0.4rem 0.5rem; font-weight: 600;">⏱️ 總交易回應時間</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right; font-weight: 600;">14,271.93 秒</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right; font-weight: 600;">100.0%</td>
+                                    </tr>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                                        <td style="padding: 0.4rem 0.5rem; color: var(--text-secondary);">💾 記憶體分頁置入等待 (Page Wait)</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right; color: var(--accent-purple); font-weight: 600;">4,674.48 秒</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right; color: var(--accent-purple); font-weight: 600;">32.75%</td>
+                                    </tr>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                                        <td style="padding: 0.4rem 0.5rem; color: var(--text-secondary);">⚙️ 非資料庫系統等待 (Non-DB Wait)</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right;">1,277.93 秒</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right;">8.95%</td>
+                                    </tr>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                                        <td style="padding: 0.4rem 0.5rem; color: var(--text-secondary);">🗄️ 資料庫引擎等待 (DB Wait)</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right;">1,065.12 秒</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right;">7.46%</td>
+                                    </tr>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                                        <td style="padding: 0.4rem 0.5rem; color: var(--text-secondary);">🔒 物件與行鎖定等待 (Lock Wait)</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right;">216.04 秒</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right;">1.51%</td>
+                                    </tr>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                                        <td style="padding: 0.4rem 0.5rem; color: var(--text-secondary);">⚡ CPU 運算時間 (CPU Time)</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right;">50.96 秒</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right;">0.36%</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <div style="background: rgba(56, 189, 248, 0.02); border-left: 3px solid var(--accent-blue); padding: 0.75rem; border-radius: 6px;">
+                                <h5 style="color: var(--accent-blue); font-size: 0.85rem; font-weight: 600; margin-bottom: 0.15rem;">📌 診斷與根本原因</h5>
+                                <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0; line-height: 1.4;">
+                                    此工作確認為<strong>互動式作業 (Interactive Job, Subsystem: QINTER, 終端裝置: QVIRCD0023)</strong>，且底層監控顯示 <strong>SQL 執行次數為 0</strong>，證實其並非執行 SQL 查詢，而是傳統的 <strong>Native I/O (RPG/COBOL 傳統資料庫讀寫)</strong>。該交易執行了 80.9 萬次邏輯讀取與 21.2 萬次邏輯更新，但伴隨了高達 **7,007,825 次實體寫入 (JBWRT + JBADBW)**，極可能是使用者在 5250 前台直接執行了大型資料拷貝 (CPYF)、檔案重組 (RGZPFM) 或存取路徑重建。<br>
+                                    此外，實體讀取次數 (58,510) 與 Page Faults (58,486) 呈 1:1 的強關聯，導致高達 1.3 小時的 Page Wait (JBPW)，說明前台互動式記憶體池 (Pool) 對此作業的實體讀寫缺乏快取，形成嚴重的分頁阻塞。
+                                </p>
+                            </div>
+                            <div style="background: rgba(74, 222, 128, 0.02); border-left: 3px solid var(--accent-green); padding: 0.75rem; border-radius: 6px;">
+                                <h5 style="color: var(--accent-green); font-size: 0.85rem; font-weight: 600; margin-bottom: 0.15rem;">💡 優化與改善建議</h5>
+                                <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0; line-height: 1.4;">
+                                    1. <strong>禁止於互動式會話中執行重度批次作業</strong>：此為 IBM i 之維運反模式，應宣導使用 <code>SBMJOB</code> 提交至批次子系統 (如 QBATH) 執行，以釋放 QINTER 互動式資源。<br>
+                                    2. <strong>Native I/O 程式碼優化</strong>：檢查 RPG/CL 程式是否啟用 Block I/O (如 <code>BLOCK(*YES)</code>) 來減少實體磁碟呼叫次數，並確保善用邏輯檔案 (LF) 與合適的主鍵排序。<br>
+                                    3. <strong>記憶體池效能調校</strong>：持續觀察 <code>QPFRADJ</code> 系統值對記憶體池大小的微調狀態，若 Page Fault 持續高企，應評估手動增加交互式儲存池的配置大小。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Case 2: 07/16 CMPFILDTA (Disk I/O Storm) -->
+                <div class="rca-card" style="background: var(--card-bg); backdrop-filter: blur(12px); border-radius: 20px; border: 1px solid var(--card-border); padding: 1.75rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3); display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                        <div style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.75rem; margin-bottom: 1.25rem;">
+                            <span style="background: rgba(251, 191, 36, 0.1); color: #fbbf24; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">Case 02: 磁碟 I/O 暴風雨</span>
+                            <h3 style="font-size: 1.3rem; font-weight: 700; color: var(--text-primary); margin-top: 0.5rem; margin-bottom: 0;">
+                                Job: CMPFILDTA (552601) | 07/16 11:00
+                            </h3>
+                            <p style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 0.25rem;">
+                                執行緒狀態: 多執行緒並行比對 | 單一區間 I/O: 87,943,713 次 | 累計 CPU: 334.1 秒
+                            </p>
+                        </div>
+                        
+                        <div style="margin-bottom: 1.25rem;">
+                            <h4 style="font-size: 0.95rem; color: var(--accent-blue); margin-bottom: 0.5rem; font-weight: 600;">📊 多日尖峰區間負載分佈 (07/16 早上)</h4>
+                            <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; background: rgba(0,0,0,0.2); border-radius: 8px; overflow: hidden; margin-bottom: 1rem;">
+                                <thead>
+                                    <tr style="background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.08); text-align: left; color: var(--text-secondary); font-size: 0.75rem;">
+                                        <th style="padding: 0.5rem;">區間時間 (15-min Intervals)</th>
+                                        <th style="padding: 0.5rem; text-align: right;">執行緒累計 CPU 時間</th>
+                                        <th style="padding: 0.5rem; text-align: right;">執行緒總 I/O 次數</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                                        <td style="padding: 0.4rem 0.5rem;">⏱️ 07/16 10:45 (INTNUM 44)</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right;">289.9 秒</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right; color: var(--accent-purple);">79,160,157 次</td>
+                                    </tr>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); background: rgba(251, 191, 36, 0.03);">
+                                        <td style="padding: 0.4rem 0.5rem; font-weight: 600;">⏱️ 07/16 11:00 (INTNUM 45 - Peak)</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right; font-weight: 600;">334.1 秒</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right; color: #fbbf24; font-weight: 600;">87,943,713 次</td>
+                                    </tr>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                                        <td style="padding: 0.4rem 0.5rem;">⏱️ 07/16 11:15 (INTNUM 46)</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right;">269.8 秒</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right; color: var(--accent-purple);">72,304,776 次</td>
+                                    </tr>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                                        <td style="padding: 0.4rem 0.5rem;">⏱️ 07/16 11:30 (INTNUM 47)</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right;">307.1 秒</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right; color: var(--accent-purple);">81,561,382 次</td>
+                                    </tr>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                                        <td style="padding: 0.4rem 0.5rem;">⏱️ 07/16 11:45 (INTNUM 48)</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right;">302.6 秒</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right; color: var(--accent-purple);">81,086,848 次</td>
+                                    </tr>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                                        <td style="padding: 0.4rem 0.5rem;">⏱️ 07/16 12:00 (INTNUM 49)</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right;">302.8 秒</td>
+                                        <td style="padding: 0.4rem 0.5rem; text-align: right; color: var(--accent-purple);">79,900,912 次</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <div style="background: rgba(251, 191, 36, 0.02); border-left: 3px solid #fbbf24; padding: 0.75rem; border-radius: 6px;">
+                                <h5 style="color: #fbbf24; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.15rem;">📌 診斷與根本原因</h5>
+                                <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0; line-height: 1.4;">
+                                    此工作確認為 <strong>MIMIX 批次比對作業 (Batch Job, Subsystem: MIMIXSBS, Job Subtype: D - DDM 雙機通訊)</strong>，監控顯示其 <strong>SQL 執行次數為 0</strong>，說明其並非執行 SQL 查詢，而是透過傳統的 <strong>Native RLA (Record-Level Access)</strong> 與 <strong>DDM (Distributed Data Management)</strong> 來跨機讀取與比對資料。<br>
+                                    在 10:45 ~ 12:15 間，該 Job 衍生出數十個平行執行緒 (Parallel Threads) 同步工作。各執行緒的寫入量皆為 0 (JBWRT=0, JBADBW=0)，但讀取量極大，且幾乎全部走 **JBADBR (非同步資料庫物理預讀, Asynchronous Database Reads)**。每個執行緒每區間預讀了 400 萬至 900 萬次，累計形成了單一 15 分鐘區間內高達 **87,943,713 次實體讀取**的 I/O 暴風雨。雖然透過非同步預讀實現了 Page Wait 為 0 的高效能讀取，但極限的吞吐量依然會導致磁碟子系統與快取飽和。
+                                </p>
+                            </div>
+                            <div style="background: rgba(74, 222, 128, 0.02); border-left: 3px solid var(--accent-green); padding: 0.75rem; border-radius: 6px;">
+                                <h5 style="color: var(--accent-green); font-size: 0.85rem; font-weight: 600; margin-bottom: 0.15rem;">💡 優化與改善建議</h5>
+                                <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0; line-height: 1.4;">
+                                    1. <strong>調整比對排程至業務低谷期</strong>：強烈建議將 MIMIX <code>CMPFILDTA</code> 大規模資料比對（特別是涉及大表的比對）安排至**凌晨業務低谷時段** (如 02:00 ~ 05:00) 執行，以避免白天線上聯機交易受到磁碟 Subsystem 延遲波動的波及。<br>
+                                    2. <strong>調整並行執行緒上限 (Concurrency Limits)</strong>：在 MIMIX 組態中配置合適的並行執行緒上限，限制單次比對作業的最大並發 Threads 數量。這能平滑物理磁碟預讀 (JBADBR) 的峰值流量，保護即時交易的 I/O 通道寬度。<br>
+                                    3. <strong>善用 DDM 網路頻寬配置</strong>：由於此作業屬於 DDM 通訊工作，在大流量讀取時應結合網絡帶寬控流 (Bandwidth throttling)，防止 DDM 數據流同步擠占正常的網絡主通道。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
