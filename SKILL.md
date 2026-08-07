@@ -34,7 +34,7 @@ description: Extract IBM i Collection Services performance data from custom libr
 
 **實機完整擷取指令：**
 ```bash
-node <skill 路徑>/scripts/test_pipeline.js --host=<主機ID>
+node ./scripts/test_pipeline.js --host=<主機ID>
 ```
 
 ---
@@ -44,7 +44,7 @@ node <skill 路徑>/scripts/test_pipeline.js --host=<主機ID>
 每次修改 SQL 欄位或計算邏輯後，必須執行 `scripts/validate_metrics.js` 進行基準值對比驗證，以確保報告數據與綠色畫面完全一致。
 
 ```bash
-node <skill 路徑>/scripts/validate_metrics.js --host=<主機ID>
+node ./scripts/validate_metrics.js --host=<主機ID>
 ```
 
 ---
