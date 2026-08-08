@@ -10,7 +10,7 @@
  */
 import fs from "fs";
 import path from "path";
-import { SKILL_ROOT } from "./pathResolver.js";
+import { SKILL_ROOT } from "../core/pathResolver.js";
 
 const MANIFEST_PATH = path.join(SKILL_ROOT, "references", "field_manifest.json");
 const CACHE_PATH = path.join(SKILL_ROOT, "scratch", ".schema_check_cache.json");

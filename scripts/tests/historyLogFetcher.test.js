@@ -1,4 +1,4 @@
-import { historyLogRowToEvent, inferFullDate, buildLogWindow, fetchJobHistoryContext } from "../historyLogFetcher.js";
+import { historyLogRowToEvent, inferFullDate, buildLogWindow, fetchJobHistoryContext } from "../extraction/historyLogFetcher.js";
 
 const green = "\x1b[32m";
 const red = "\x1b[31m";

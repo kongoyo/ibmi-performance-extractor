@@ -1,8 +1,8 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { runPreflight } from "./preflight.js";
-import { METRIC_LABELS, resolveContextDir, resolveLibraryAndJsonPath, summarizeHits } from "./rcaUtils.js";
+import { runPreflight } from "./core/preflight.js";
+import { METRIC_LABELS, resolveContextDir, resolveLibraryAndJsonPath, summarizeHits } from "./analysis/rcaUtils.js";
 
 // Transaction Count is excluded from anomaly scoring: a high transaction volume
 // alone is business load, not a resource anomaly (see TB7277206B precedent —

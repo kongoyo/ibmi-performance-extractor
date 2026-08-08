@@ -1,4 +1,4 @@
-import { decodeRemoteAddress } from "../jobRanker.js";
+import { decodeRemoteAddress } from "../extraction/jobRanker.js";
 
 const green = "\x1b[32m";
 const red = "\x1b[31m";

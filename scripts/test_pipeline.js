@@ -1,16 +1,14 @@
 import fs from "fs";
 import path from "path";
-import { execSync } from "child_process";
 import {
-  SKILL_ROOT,
   resolveDataAndOutputDirs,
   runPreflight,
   loadServices,
-  checkPython,
-} from "./preflight.js";
-import { checkSchema, checkDataSanity } from "./healthcheck.js";
-import { PerformanceDataExtractor, discoverLibrariesForDates } from "./extractor.js";
-import { resolveLibraryAndJsonPath } from "./rcaUtils.js";
+} from "./core/preflight.js";
+import { checkSchema, checkDataSanity } from "./extraction/healthcheck.js";
+import { PerformanceDataExtractor, discoverLibrariesForDates } from "./extraction/extractor.js";
+import { resolveLibraryAndJsonPath } from "./analysis/rcaUtils.js";
+import { generateHtmlReport as generateReport } from "./reporting/generateReport.js";
 
 // Expands an inclusive --dateFrom..--dateTo window into "MM/DD" strings,
 // using the same non-leap-year model julianToDateStr (extractor.js) assumes,
@@ -38,15 +36,18 @@ function enumerateDateRange(fromStr, toStr) {
 // Shared by both the cache-hit and freshly-extracted paths so the HTML
 // dashboard is always produced the same way regardless of where the JSON
 // payload came from.
-function generateHtmlReport({ pythonCmd, jsonPath, outDir, hostId, library, label, rcaFlag }) {
+function generateHtmlReport({ jsonPath, outDir, hostId, library, label, rcaFlag }) {
   const libUpper = library.toUpperCase();
-  const reporterScript = path.join(SKILL_ROOT, "scripts", "generate_report.py");
   const outPath = path.join(outDir, `${libUpper}_perf_${label}.html`);
 
-  console.log(`\n📊 Generating HTML Report...`);
-  const cmd = `${pythonCmd} "${reporterScript}" --input "${jsonPath}" --output "${outPath}" --host ${hostId} --lib ${library}${rcaFlag}`;
-  console.log(`Executing: ${cmd}`);
-  execSync(cmd, { encoding: "utf8" });
+  console.log(`\n📊 Generating HTML Report (JS)...`);
+  generateReport({
+    input: jsonPath,
+    output: outPath,
+    host: hostId,
+    lib: library,
+    rca: rcaFlag === " --rca" || rcaFlag === true
+  });
   return outPath;
 }
 
@@ -106,10 +107,9 @@ async function main() {
     console.log(`📌 Library: ${library}`);
     console.log(`📌 Output dir: ${outDir}`);
 
-    const pythonCmd = checkPython();
     const cachedPayload = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
     const outPath = generateHtmlReport({
-      pythonCmd, jsonPath, outDir, hostId, library, rcaFlag,
+      jsonPath, outDir, hostId, library, rcaFlag,
       label: labelFor(cachedPayload.dates),
     });
 
@@ -125,7 +125,6 @@ async function main() {
   );
 
   // --- Live extraction path ---
-  const pythonCmd = checkPython();
   const { SourceManager } = await loadServices(args);
   let library = args.lib || hostConfig.library || "QPFRDATA";
   let { dataDir, outDir } = resolveDataAndOutputDirs(hostConfig, hostId, library);
@@ -205,8 +204,8 @@ async function main() {
     fs.writeFileSync(jsonPath, JSON.stringify(payload, null, 2));
     console.log(`\n✔ Saved consolidated performance JSON payload to: ${jsonPath}`);
 
-    // Step 4: Run generate_report.py (the reporter script itself travels with the skill)
-    const outPath = generateHtmlReport({ pythonCmd, jsonPath, outDir, hostId, library, label, rcaFlag });
+    // Step 4: Run generateReport.js (the reporter script itself travels with the skill)
+    const outPath = generateHtmlReport({ jsonPath, outDir, hostId, library, label, rcaFlag });
 
     console.log(`\n🎉 Success!`);
     console.log(`📄 Report: ${outPath}`);

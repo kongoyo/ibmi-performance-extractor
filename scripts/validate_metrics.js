@@ -1,4 +1,4 @@
-import { runPreflight } from "./preflight.js";
+import { runPreflight } from "./core/preflight.js";
 
 // Color codes for output formatting
 const green = "\x1b[32m";

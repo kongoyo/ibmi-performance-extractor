@@ -1,8 +1,8 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { runPreflight } from "./preflight.js";
-import { resolveContextDir, resolveLibraryAndJsonPath, summarizeHits } from "./rcaUtils.js";
+import { runPreflight } from "./core/preflight.js";
+import { resolveContextDir, resolveLibraryAndJsonPath, summarizeHits } from "./analysis/rcaUtils.js";
 
 // Only the top N disk units get full detail; a busy system can have dozens of
 // units each showing up across many intervals, same rationale as

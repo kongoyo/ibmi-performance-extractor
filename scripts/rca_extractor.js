@@ -1,12 +1,12 @@
 import fs from "fs";
 import path from "path";
-import { runPreflight, loadServices } from "./preflight.js";
+import { runPreflight, loadServices } from "./core/preflight.js";
 import {
   METRIC_LABELS, jobMatches, resolveContextDir, resolveLibraryAndJsonPath,
   SYSTEM_COMPARABLE_METRICS, computeJobLevelDayMax, summarizeHits,
-} from "./rcaUtils.js";
-import { parseDsplog, findJobEvents, findNearbyConnects, describeEndCode } from "./dsplogParser.js";
-import { fetchJobHistoryContext } from "./historyLogFetcher.js";
+} from "./analysis/rcaUtils.js";
+import { parseDsplog, findJobEvents, findNearbyConnects, describeEndCode } from "./analysis/dsplogParser.js";
+import { fetchJobHistoryContext } from "./extraction/historyLogFetcher.js";
 
 /**
  * Cross-references a target job against parsed QHST/DSPLOG events (see

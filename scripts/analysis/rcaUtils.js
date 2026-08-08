@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { SKILL_ROOT, resolveDataAndOutputDirs } from "./pathResolver.js";
+import { SKILL_ROOT, resolveDataAndOutputDirs } from "../core/pathResolver.js";
 
 export const METRIC_LABELS = {
   Count: "Transaction Count（交易量）",

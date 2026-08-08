@@ -1,8 +1,8 @@
 import fs from "fs";
 import path from "path";
-import { runPreflight } from "./preflight.js";
-import { METRIC_LABELS, resolveContextDir, resolveLibraryAndJsonPath } from "./rcaUtils.js";
-import { THRESHOLDS } from "./reportingThresholds.js";
+import { runPreflight } from "./core/preflight.js";
+import { METRIC_LABELS, resolveContextDir, resolveLibraryAndJsonPath } from "./analysis/rcaUtils.js";
+import { THRESHOLDS } from "./reporting/reportingThresholds.js";
 
 /** Simple least-squares slope of dayMax against day index (0,1,2,...). */
 function linearSlope(points) {

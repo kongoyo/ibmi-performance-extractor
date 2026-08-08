@@ -1,9 +1,9 @@
 import fs from "fs";
 import path from "path";
-import { runPreflight } from "./preflight.js";
-import { METRIC_LABELS, resolveContextDir, resolveLibraryAndJsonPath } from "./rcaUtils.js";
+import { runPreflight } from "./core/preflight.js";
+import { METRIC_LABELS, resolveContextDir, resolveLibraryAndJsonPath } from "./analysis/rcaUtils.js";
 import { scanAnomalies } from "./anomaly_scan.js";
-import { THRESHOLDS } from "./reportingThresholds.js";
+import { THRESHOLDS } from "./reporting/reportingThresholds.js";
 
 /**
  * One-pass system health summary for `date`: per-metric day-max + when it

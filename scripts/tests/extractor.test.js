@@ -1,4 +1,4 @@
-import { PerformanceDataExtractor, discoverLibrariesForDates, julianToDateStr } from "../extractor.js";
+import { PerformanceDataExtractor, discoverLibrariesForDates, julianToDateStr } from "../extraction/extractor.js";
 
 const green = "\x1b[32m";
 const red = "\x1b[31m";

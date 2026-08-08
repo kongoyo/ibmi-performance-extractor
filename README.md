@@ -34,7 +34,7 @@
     *   `「執行 test_pipeline.js 時發生 Pre-flight Check 失敗，請幫我修復環境問題。」`
 
 ### 情境五：客製化 HTML 報表視覺
-若您想要更改報表的配色、圖表行為，或是在報表底下新增新的診斷區塊，Agent 會載入 `html-visual-rules` 來幫助您符合規範地修改報表程式 (`generate_report.py`)。
+若您想要更改報表的配色、圖表行為，或是在報表底下新增新的診斷區塊，Agent 會載入 `html-visual-rules` 來幫助您符合規範地修改報表程式 (`generateReport.js`)。
 *   **範例提示詞 (Example Prompts):**
     *   `「請幫我把 HTML 報表的 CPU 折線圖顏色改成漸層藍色，並確保 Y 軸依然固定在 0-100%。」`
 

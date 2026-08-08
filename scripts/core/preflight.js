@@ -55,22 +55,6 @@ export function checkNodeVersion(minMajor = 18) {
   }
 }
 
-export function checkPython() {
-  for (const cmd of ["python", "python3"]) {
-    try {
-      execSync(`${cmd} --version`, { stdio: "ignore" });
-      return cmd;
-    } catch {
-      // try next candidate
-    }
-  }
-  fail(
-    "找不到可用的 Python 3 執行環境 (generate_report.py 需要它產生 HTML 報表)。",
-    "  1. 請安裝 Python 3.8 以上版本並確認已加入 PATH\n" +
-      "  2. 驗證方式: 於終端機執行 `python --version` 或 `python3 --version`",
-  );
-}
-
 // Monorepo checkout: services.js sits under packages/server/... relative to
 // the project root. Installed-as-npm-dependency layout: the package root
 // itself IS packages/server's published output, so services.js sits closer
@@ -267,30 +251,24 @@ export function loadHostConfig(hostIdArg, args = {}) {
  *
  * 守衛順序（固定，不對外暴露）：
  *   1. checkNodeVersion
- *   2. checkPython（可選，requirePython: true 時才執行）
- *   3. loadServices（可選，requireServices: true 時才執行）
- *   4. loadHostConfig
+ *   2. loadServices（可選，requireServices: true 時才執行）
+ *   3. loadHostConfig
  *
  * 錯誤模式：任一守衛失敗 → 印出中文導引 → process.exit(1)
  *
  * @param {object}  [options]
  * @param {boolean} [options.requireServices=true]
  *   設為 false 跳過 SourceManager 載入（適用於只讀取本地 JSON 的腳本）。
- * @param {boolean} [options.requirePython=false]
- *   設為 true 執行 Python 可用性守衛（適用於會呼叫 generate_report.py 的腳本）。
  * @returns {Promise<{
  *   args: object,
  *   hostId: string,
  *   hostConfig: object,
  *   configPath: string,
- *   SourceManager: any|null,
- *   pythonCmd: string|null
+ *   SourceManager: any|null
  * }>}
  */
-export async function runPreflight({ requireServices = true, requirePython = false } = {}) {
+export async function runPreflight({ requireServices = true } = {}) {
   checkNodeVersion();
-
-  const pythonCmd = requirePython ? checkPython() : null;
 
   const args = parseArgs();
 
@@ -300,5 +278,5 @@ export async function runPreflight({ requireServices = true, requirePython = fal
 
   const { hostId, hostConfig, configPath } = loadHostConfig(args.host, args);
 
-  return { args, hostId, hostConfig, configPath, SourceManager, pythonCmd };
+  return { args, hostId, hostConfig, configPath, SourceManager };
 }

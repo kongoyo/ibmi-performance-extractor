@@ -1,4 +1,4 @@
-import { parseDsplog, findJobEvents, findNearbyConnects, describeEndCode } from "../dsplogParser.js";
+import { parseDsplog, findJobEvents, findNearbyConnects, describeEndCode } from "../analysis/dsplogParser.js";
 
 const green = "\x1b[32m";
 const red = "\x1b[31m";

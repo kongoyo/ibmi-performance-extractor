@@ -1,6 +1,6 @@
 # HTML 報告視覺化原則
 
-生成的 HTML 報告需符合以下設計規範，具體實作於 `scripts/generate_report.py`：
+生成的 HTML 報告需符合以下設計規範，具體實作於 `scripts/generateReport.js`：
 
 1. **百分比 Y 軸固定**：CPU 及 High Disk 等百分比圖表的 Y 軸必須固定在 0–100%，嚴禁自動縮放。
 2. **互動式 Job 排行面板**：每個圖表卡片右側需配置 Tab 式日期切換的 Top 10 Job 列表，且 hover 圖表時自動更新對應時段排行。

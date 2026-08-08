@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { SKILL_ROOT, resolveDataAndOutputDirs } from "../pathResolver.js";
+import { SKILL_ROOT, resolveDataAndOutputDirs } from "../core/pathResolver.js";
 
 const green = "\x1b[32m";
 const red = "\x1b[31m";

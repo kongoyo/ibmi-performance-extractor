@@ -15,7 +15,7 @@ import { fileURLToPath } from "url";
 
 export const SKILL_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "..",
+  "../..",
 );
 
 /**

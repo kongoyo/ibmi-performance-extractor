@@ -50,7 +50,6 @@
 | 檢查項目 | 對應函式 | 缺失時的行為 |
 |---|---|---|
 | Node.js 版本 (>=18) | `checkNodeVersion()` | 中斷並提示安裝新版 Node |
-| Python 3 | `checkPython()` | 依序嘗試 `python`/`python3`，都找不到則中斷並提示安裝 |
 | `@ibm/ibmi-mcp-server` 服務模組 (`SourceManager`) | `loadServices(args)` | 檢查 `services.js` 是否存在；cwd 找不到時嘗試 `require.resolve` 定位 npm 套件；皆失敗才中斷。 |
 | 主機設定檔是否存在 | `loadHostConfig(hostId, args)` | 找不到 `config/hosts_config.json` 則中斷並指向 `examples/hosts_config.json.example` |
 | 連線憑證是否完整 | `loadHostConfig(hostId, args)` | 中斷並提示填寫設定檔或改用環境變數 |
