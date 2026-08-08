@@ -1,5 +1,4 @@
 logs/
-memory/
 scratch/
 node_modules
 __pycache__/
