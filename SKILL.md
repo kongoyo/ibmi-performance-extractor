@@ -51,8 +51,11 @@ npm install
 - `--dateFrom=<MM/DD>` + `--dateTo=<MM/DD>`：指定要一次擷取的**日期區間**（含頭尾，例如 `--dateFrom=07/12 --dateTo=07/14` 會擷取 07/12、07/13、07/14 三天）
 - `--lib=<LibraryName>`：覆寫該主機設定的 `library`
 - `--forceSchemaCheck=true`：強制重新驗證 Schema
+- `--forceExtract=true`：跳過本地快取檢查，強制連線主機重新擷取（見下方「本地優先」說明）
 
 擷取範圍為指定 Library 中**實際存在**的 partition（member），不設人工天數上限；`extractor.js` 的 `extractDates()` 會自動枚舉 library 內所有 partition，再篩出符合目標日期（單日或區間展開後）的那些。
+
+**本地優先（Local-First）**：`npm run extract` 執行時會先檢查 `data/<主機ID>/` 底下（含未指定 `--lib` 時的其他 library 子目錄）是否已有涵蓋所有目標日期的 `perf_*.json` 快取；若有，直接用快取重新產生 HTML 報表，**完全不連線主機**（不需要 Python 之外的憑證/DB 連線）。只有本地找不到完整涵蓋的快取時，才會連線主機擷取。若需要無論如何都重新連線主機（例如懷疑主機資料已更新），加上 `--forceExtract=true`。
 
 **輸出位置與命名**：資料落在 `data/<主機ID>/<Library>/`，報表落在 `outputs/<主機ID>/<Library>/`，檔名由實際擷取的日期範圍自動推導。詳細路徑結構與命名規則請參閱 `references/output-conventions.md`。
 

@@ -1,8 +1,8 @@
-import { partitionQuery, intCpuQuery, misumSummaryQuery, jobsQuery, diskArmQuery } from "./queries.js";
+import { partitionQuery, intCpuQuery, misumSummaryQuery, jobsQuery, diskArmQuery, librariesWithPartitionsQuery } from "./queries.js";
 import { rankPeakJobs } from "./jobRanker.js";
 
 // Helper to convert Julian Day of Year to MM/DD (non-leap year)
-function julianToDateStr(julianStr) {
+export function julianToDateStr(julianStr) {
   const ddd = parseInt(julianStr, 10);
   const monthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   let daysLeft = ddd;
@@ -15,6 +15,35 @@ function julianToDateStr(julianStr) {
     daysLeft -= monthDays[i];
   }
   return `${String(month).padStart(2, "0")}/${String(daysLeft).padStart(2, "0")}`;
+}
+
+/**
+ * Scans every library on the host that holds QAPMISUM partitions and ranks
+ * them by how many of their partitions fall inside targetDates. Used to
+ * auto-recover when the host's configured default library has no data for
+ * the requested dates, instead of the caller having to guess/retry libraries
+ * by hand.
+ * @param {Object} dbManager - The injected SourceManager adapter
+ * @param {string} hostId - Host configuration ID
+ * @param {string[]} targetDates - "MM/DD" strings to match against
+ * @returns {Promise<{library: string, matchCount: number}[]>} candidates sorted by matchCount desc
+ */
+export async function discoverLibrariesForDates(dbManager, hostId, targetDates) {
+  const res = await dbManager.executeQuery(hostId, librariesWithPartitionsQuery());
+  const targetDateSet = new Set(targetDates);
+  const matchCounts = {};
+
+  for (const r of res.data) {
+    const julianMatch = r.PARTITION_NAME.trim().match(/Q(\d{3})/);
+    if (!julianMatch) continue;
+    if (!targetDateSet.has(julianToDateStr(julianMatch[1]))) continue;
+    const lib = r.LIBRARY.trim();
+    matchCounts[lib] = (matchCounts[lib] || 0) + 1;
+  }
+
+  return Object.entries(matchCounts)
+    .map(([library, matchCount]) => ({ library, matchCount }))
+    .sort((a, b) => b.matchCount - a.matchCount);
 }
 
 export class PerformanceDataExtractor {

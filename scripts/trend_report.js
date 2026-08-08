@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
-import { resolveDataAndOutputDirs, runPreflight } from "./preflight.js";
-import { METRIC_LABELS, resolveContextDir, resolveRangeJsonPath } from "./rcaUtils.js";
+import { runPreflight } from "./preflight.js";
+import { METRIC_LABELS, resolveContextDir, resolveLibraryAndJsonPath } from "./rcaUtils.js";
 import { THRESHOLDS } from "./reportingThresholds.js";
 
 /** Simple least-squares slope of dayMax against day index (0,1,2,...). */
@@ -110,13 +110,15 @@ async function main() {
   }
 
 
-  const library = args.lib || hostConfig.library || "QPFRDATA";
-  const { dataDir, outDir } = resolveDataAndOutputDirs(hostConfig, hostId, library);
+  const { library, outDir, jsonPath, triedLibraries, autoSwitched } =
+    resolveLibraryAndJsonPath(hostConfig, hostId, args, { dateFrom: args.dateFrom, dateTo: args.dateTo });
   const contextDir = resolveContextDir(outDir);
 
-  const jsonPath = resolveRangeJsonPath(dataDir, args.dateFrom, args.dateTo);
+  if (autoSwitched) {
+    console.log(`⚠️ 主機預設 Library 找不到完整涵蓋 ${args.dateFrom} ~ ${args.dateTo} 的快取資料，自動改用 Library "${library}"（已在本機找到相符資料）。`);
+  }
   if (!jsonPath) {
-    console.error(`❌ 在 ${dataDir} 找不到完整涵蓋 ${args.dateFrom} ~ ${args.dateTo} 的效能資料 JSON 檔。請先執行 npm run extract -- --host=${args.host} --dateFrom=${args.dateFrom} --dateTo=${args.dateTo}。`);
+    console.error(`❌ 在 ${triedLibraries.map((l) => `data/${hostConfig.host}/${l}/`).join("、")} 都找不到完整涵蓋 ${args.dateFrom} ~ ${args.dateTo} 的效能資料 JSON 檔。請先執行 npm run extract -- --host=${args.host} --dateFrom=${args.dateFrom} --dateTo=${args.dateTo}。`);
     process.exit(1);
   }
 

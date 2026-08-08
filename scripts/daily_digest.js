@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
-import { resolveDataAndOutputDirs, runPreflight } from "./preflight.js";
-import { METRIC_LABELS, resolveJsonPath, resolveContextDir } from "./rcaUtils.js";
+import { runPreflight } from "./preflight.js";
+import { METRIC_LABELS, resolveContextDir, resolveLibraryAndJsonPath } from "./rcaUtils.js";
 import { scanAnomalies } from "./anomaly_scan.js";
 import { THRESHOLDS } from "./reportingThresholds.js";
 
@@ -84,13 +84,15 @@ async function main() {
   }
 
 
-  const library = args.lib || hostConfig.library || "QPFRDATA";
-  const { dataDir, outDir } = resolveDataAndOutputDirs(hostConfig, hostId, library);
+  const { library, outDir, jsonPath, triedLibraries, autoSwitched } =
+    resolveLibraryAndJsonPath(hostConfig, hostId, args, { date: args.date });
   const contextDir = resolveContextDir(outDir);
 
-  const jsonPath = resolveJsonPath(dataDir, args.date);
+  if (autoSwitched) {
+    console.log(`⚠️ 主機預設 Library 找不到 ${args.date} 的快取資料，自動改用 Library "${library}"（已在本機找到相符資料）。`);
+  }
   if (!jsonPath) {
-    console.error(`❌ 在 ${dataDir} 找不到包含 ${args.date} 的效能資料 JSON 檔。請先執行擷取 Pipeline。`);
+    console.error(`❌ 在 ${triedLibraries.map((l) => `data/${hostConfig.host}/${l}/`).join("、")} 都找不到包含 ${args.date} 的效能資料 JSON 檔。請先執行擷取 Pipeline。`);
     process.exit(1);
   }
 

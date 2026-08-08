@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { SKILL_ROOT, resolveDataAndOutputDirs } from "./pathResolver.js";
 
 export const METRIC_LABELS = {
   Count: "Transaction Count（交易量）",
@@ -170,4 +171,57 @@ export function resolveJsonPath(dataDir, date) {
     }
   }
   return null;
+}
+
+/**
+ * Resolves which library's cached perf_*.json to read for a host + date spec,
+ * auto-falling back to sibling library directories under data/<host>/ when
+ * the caller didn't pin --lib and the default library has no cached data
+ * covering the requested date(s) — a host's Collection Services data can be
+ * split across more than one *MGTCOL library, and hosts_config.json only
+ * names one as the default. This exists so every analysis script (rca,
+ * anomaly, digest, trend, disk-hotspot) locates the right library
+ * deterministically instead of the caller guessing --lib by trial and error.
+ *
+ * @param {object} hostConfig
+ * @param {string} hostId
+ * @param {object} args - parsed CLI args (checked for args.lib)
+ * @param {{date: string}|{dateFrom: string, dateTo: string}} dateSpec
+ * @returns {{
+ *   library: string, dataDir: string, outDir: string,
+ *   jsonPath: string|null, triedLibraries: string[], autoSwitched: boolean
+ * }}
+ */
+export function resolveLibraryAndJsonPath(hostConfig, hostId, args, dateSpec) {
+  const findJson = (dataDir) =>
+    dateSpec.date
+      ? resolveJsonPath(dataDir, dateSpec.date)
+      : resolveRangeJsonPath(dataDir, dateSpec.dateFrom, dateSpec.dateTo);
+
+  const primaryLibrary = args.lib || hostConfig.library || "QPFRDATA";
+  const primaryDirs = resolveDataAndOutputDirs(hostConfig, hostId, primaryLibrary);
+  const primaryJsonPath = findJson(primaryDirs.dataDir);
+
+  if (primaryJsonPath || args.lib) {
+    return { library: primaryLibrary, ...primaryDirs, jsonPath: primaryJsonPath, triedLibraries: [primaryLibrary], autoSwitched: false };
+  }
+
+  const hostDataRoot = path.join(SKILL_ROOT, "data", hostConfig.host);
+  const siblingLibraries = fs.existsSync(hostDataRoot)
+    ? fs.readdirSync(hostDataRoot, { withFileTypes: true })
+        .filter((d) => d.isDirectory() && d.name !== primaryLibrary)
+        .map((d) => d.name)
+    : [];
+
+  const triedLibraries = [primaryLibrary];
+  for (const lib of siblingLibraries) {
+    triedLibraries.push(lib);
+    const dirs = resolveDataAndOutputDirs(hostConfig, hostId, lib);
+    const candidateJsonPath = findJson(dirs.dataDir);
+    if (candidateJsonPath) {
+      return { library: lib, ...dirs, jsonPath: candidateJsonPath, triedLibraries, autoSwitched: true };
+    }
+  }
+
+  return { library: primaryLibrary, ...primaryDirs, jsonPath: null, triedLibraries, autoSwitched: false };
 }

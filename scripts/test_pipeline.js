@@ -5,9 +5,12 @@ import {
   SKILL_ROOT,
   resolveDataAndOutputDirs,
   runPreflight,
+  loadServices,
+  checkPython,
 } from "./preflight.js";
 import { checkSchema, checkDataSanity } from "./healthcheck.js";
-import { PerformanceDataExtractor } from "./extractor.js";
+import { PerformanceDataExtractor, discoverLibrariesForDates } from "./extractor.js";
+import { resolveLibraryAndJsonPath } from "./rcaUtils.js";
 
 // Expands an inclusive --dateFrom..--dateTo window into "MM/DD" strings,
 // using the same non-leap-year model julianToDateStr (extractor.js) assumes,
@@ -32,13 +35,36 @@ function enumerateDateRange(fromStr, toStr) {
   return dates;
 }
 
+// Shared by both the cache-hit and freshly-extracted paths so the HTML
+// dashboard is always produced the same way regardless of where the JSON
+// payload came from.
+function generateHtmlReport({ pythonCmd, jsonPath, outDir, hostId, library, label, rcaFlag }) {
+  const libUpper = library.toUpperCase();
+  const reporterScript = path.join(SKILL_ROOT, "scripts", "generate_report.py");
+  const outPath = path.join(outDir, `${libUpper}_perf_${label}.html`);
+
+  console.log(`\n📊 Generating HTML Report...`);
+  const cmd = `${pythonCmd} "${reporterScript}" --input "${jsonPath}" --output "${outPath}" --host ${hostId} --lib ${library}${rcaFlag}`;
+  console.log(`Executing: ${cmd}`);
+  execSync(cmd, { encoding: "utf8" });
+  return outPath;
+}
+
+function labelFor(dates) {
+  return dates.length === 1
+    ? dates[0].replace(/\//g, "")
+    : `${dates[0].replace(/\//g, "")}_to_${dates[dates.length - 1].replace(/\//g, "")}`;
+}
+
 async function main() {
   console.log(`🚀 Starting Optimized Performance Data Extraction Pipeline...`);
 
   console.log(`\n🔍 執行環境事前點檢...`);
-  const { args, hostId, hostConfig, configPath, SourceManager, pythonCmd } =
-    await runPreflight({ requirePython: true });
-  const library = args.lib || hostConfig.library || "QPFRDATA";
+  // Local-first: resolve host config only (no Python check, no live DB
+  // connection yet) so a request that's already fully cached locally never
+  // needs either.
+  const { args, hostId, hostConfig, configPath } =
+    await runPreflight({ requireServices: false, requirePython: false });
 
   const hasSingleDate = !!args.date;
   const hasRange = !!args.dateFrom || !!args.dateTo;
@@ -56,12 +82,55 @@ async function main() {
   }
 
   const targetDates = hasSingleDate ? [args.date] : enumerateDateRange(args.dateFrom, args.dateTo);
-
-  const { dataDir, outDir } = resolveDataAndOutputDirs(hostConfig, hostId, library);
+  const dateSpec = hasSingleDate ? { date: args.date } : { dateFrom: args.dateFrom, dateTo: args.dateTo };
+  const libraryWasExplicit = !!args.lib;
+  const rcaFlag = args.rca === "true" ? " --rca" : "";
 
   console.log(`📌 Host: ${hostConfig.host} (id: ${hostId})`);
-  console.log(`📌 Library: ${library}`);
   console.log(`📌 Config: ${configPath}`);
+
+  // --- Local cache check: skip the live host entirely if a perf_*.json
+  // already covers every requested date, in this library or (when --lib
+  // wasn't pinned) a sibling library under data/<host>/. Use
+  // --forceExtract=true to always re-query the host regardless of cache.
+  const cacheHit = args.forceExtract === "true"
+    ? null
+    : resolveLibraryAndJsonPath(hostConfig, hostId, args, dateSpec);
+
+  if (cacheHit && cacheHit.jsonPath) {
+    const { library, outDir, jsonPath, autoSwitched } = cacheHit;
+    if (autoSwitched) {
+      console.log(`⚠️ 主機預設 Library 沒有涵蓋 ${targetDates.join(", ")} 的本地快取，自動改用 Library "${library}"（已在本機找到相符資料）。`);
+    }
+    console.log(`✔ 本地已有涵蓋 ${targetDates.join(", ")} 的快取資料，略過連線擷取：${jsonPath}`);
+    console.log(`📌 Library: ${library}`);
+    console.log(`📌 Output dir: ${outDir}`);
+
+    const pythonCmd = checkPython();
+    const cachedPayload = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+    const outPath = generateHtmlReport({
+      pythonCmd, jsonPath, outDir, hostId, library, rcaFlag,
+      label: labelFor(cachedPayload.dates),
+    });
+
+    console.log(`\n🎉 Success! (本地快取，未連線主機)`);
+    console.log(`📄 Report: ${outPath}`);
+    return;
+  }
+
+  console.log(
+    args.forceExtract === "true"
+      ? `ℹ️ --forceExtract=true，略過本地快取檢查，直接連線主機擷取...`
+      : `ℹ️ 本地沒有涵蓋 ${targetDates.join(", ")} 的快取資料，改連線主機擷取...`
+  );
+
+  // --- Live extraction path ---
+  const pythonCmd = checkPython();
+  const { SourceManager } = await loadServices(args);
+  let library = args.lib || hostConfig.library || "QPFRDATA";
+  let { dataDir, outDir } = resolveDataAndOutputDirs(hostConfig, hostId, library);
+
+  console.log(`📌 Library: ${library}`);
   console.log(`📌 Data dir: ${dataDir}`);
   console.log(`📌 Output dir: ${outDir}`);
 
@@ -78,8 +147,33 @@ async function main() {
     await checkSchema(manager, hostId, library, { force: args.forceSchemaCheck === "true" });
 
     // Extract data using the Deep Module
-    const extractor = new PerformanceDataExtractor(manager, hostId, library);
-    const { dates, times, dataByDate, peakJobsByDate, diskArms, metricSamples } = await extractor.extractDates(targetDates);
+    let extractor = new PerformanceDataExtractor(manager, hostId, library);
+    let { dates, times, dataByDate, peakJobsByDate, diskArms, metricSamples } = await extractor.extractDates(targetDates);
+
+    // The configured default library can be wrong for the requested dates (a
+    // host's Collection Services data can live in more than one *MGTCOL
+    // library). Auto-discover and retry once instead of making the caller
+    // guess a --lib value by trial and error — only when --lib wasn't pinned
+    // explicitly, since an explicit --lib is a deliberate request that should
+    // fail loudly if empty, not get silently overridden.
+    if (dates.length === 0 && !libraryWasExplicit) {
+      console.log(`\n⚠️ Library "${library}"（主機預設值）找不到符合 ${targetDates.join(", ")} 的資料，自動掃描主機上其他含效能資料的 library...`);
+      const candidates = await discoverLibrariesForDates(manager, hostId, targetDates);
+      const best = candidates.find((c) => c.library !== library);
+
+      if (best) {
+        console.log(`✔ 自動偵測到 Library "${best.library}" 有 ${best.matchCount} 個相符 partition，改用此 library 重新擷取...`);
+        library = best.library;
+        ({ dataDir, outDir } = resolveDataAndOutputDirs(hostConfig, hostId, library));
+        console.log(`📌 Library (自動切換後): ${library}`);
+        console.log(`📌 Data dir: ${dataDir}`);
+        console.log(`📌 Output dir: ${outDir}`);
+
+        await checkSchema(manager, hostId, library, { force: args.forceSchemaCheck === "true" });
+        extractor = new PerformanceDataExtractor(manager, hostId, library);
+        ({ dates, times, dataByDate, peakJobsByDate, diskArms, metricSamples } = await extractor.extractDates(targetDates));
+      }
+    }
 
     if (dates.length === 0) {
       throw new Error(`在 Library "${library}" 中找不到任何符合 ${targetDates.join(", ")} 的 partition，未產生任何檔案。`);
@@ -93,9 +187,7 @@ async function main() {
     // Filename label is derived from the dates actually found in the data
     // (not from the requested --date/--dateFrom/--dateTo), so a file's name
     // always accurately reflects its content even if the library has gaps.
-    const label = chronologicalDates.length === 1
-      ? chronologicalDates[0].replace(/\//g, "")
-      : `${chronologicalDates[0].replace(/\//g, "")}_to_${chronologicalDates[chronologicalDates.length - 1].replace(/\//g, "")}`;
+    const label = labelFor(chronologicalDates);
 
     // Step 3: Write payload JSON
     const payload = {
@@ -114,19 +206,10 @@ async function main() {
     console.log(`\n✔ Saved consolidated performance JSON payload to: ${jsonPath}`);
 
     // Step 4: Run generate_report.py (the reporter script itself travels with the skill)
-    const libUpper = library.toUpperCase();
-    const reporterScript = path.join(SKILL_ROOT, "scripts", "generate_report.py");
-
-    console.log(`\n📊 Generating HTML Report...`);
-    const outPath = path.join(outDir, `${libUpper}_perf_${label}.html`);
-    const rcaFlag = args.rca === "true" ? " --rca" : "";
-    const cmd = `${pythonCmd} "${reporterScript}" --input "${jsonPath}" --output "${outPath}" --host ${hostId} --lib ${library}${rcaFlag}`;
-    console.log(`Executing: ${cmd}`);
-    execSync(cmd, { encoding: "utf8" });
-    const generatedPaths = [outPath];
+    const outPath = generateHtmlReport({ pythonCmd, jsonPath, outDir, hostId, library, label, rcaFlag });
 
     console.log(`\n🎉 Success!`);
-    generatedPaths.forEach(p => console.log(`📄 Report: ${p}`));
+    console.log(`📄 Report: ${outPath}`);
 
   } finally {
     await manager.shutdown();

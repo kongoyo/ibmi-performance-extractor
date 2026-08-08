@@ -26,11 +26,31 @@ export function isEncryptedValue(value) {
   return typeof value === "string" && value.startsWith(PREFIX);
 }
 
+// Windows PowerShell 5.1 (powershell.exe) auto-loads modules by scanning
+// $env:PSModulePath. On machines that also have PowerShell 7 installed,
+// PSModulePath commonly picks up PS7's module directory ahead of the
+// built-in Windows PowerShell path; PS7's Microsoft.PowerShell.Security
+// build is incompatible with powershell.exe's .NET Framework runtime, so
+// auto-load silently fails and ConvertTo-SecureString becomes unavailable.
+// Pinning PSModulePath to the standard Windows PowerShell 5.1 locations
+// avoids that collision and is a no-op on machines without the pollution.
+const WINDOWS_POWERSHELL_MODULE_PATH = [
+  "C:\\Program Files\\WindowsPowerShell\\Modules",
+  "C:\\WINDOWS\\system32\\WindowsPowerShell\\v1.0\\Modules",
+].join(";");
+
 function runPowerShell(script, envVar, envValue) {
   return execFileSync(
     "powershell.exe",
     ["-NoProfile", "-NonInteractive", "-Command", script],
-    { encoding: "utf8", env: { ...process.env, [envVar]: envValue } },
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        [envVar]: envValue,
+        PSModulePath: WINDOWS_POWERSHELL_MODULE_PATH,
+      },
+    },
   ).trim();
 }
 

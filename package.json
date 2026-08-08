@@ -7,7 +7,7 @@
     "example": "examples"
   },
   "scripts": {
-    "test": "node scripts/tests/pathResolver.test.js && node scripts/tests/extractor.test.js",
+    "test": "node scripts/tests/pathResolver.test.js && node scripts/tests/extractor.test.js && node scripts/tests/jobRanker.test.js && node scripts/tests/dsplogParser.test.js && node scripts/tests/historyLogFetcher.test.js",
     "extract": "node ./scripts/test_pipeline.js",
     "validate": "node ./scripts/validate_metrics.js",
     "rca": "node ./scripts/rca_extractor.js",

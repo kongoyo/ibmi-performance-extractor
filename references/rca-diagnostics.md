@@ -63,6 +63,28 @@ AI 必須將產出的最終報告檔案，**直接寫入至與該主機/Library 
 
 > ⚠️ `JBSZWT` 是本專案首次使用的欄位，尚未經真實主機資料實測驗證（`scripts/validate_metrics.js` Test Area 7 目前僅為原始數值 dump，供人工對照 `WRKACTJOB` 核對）。在驗證通過並於 `field_reference.md` 記錄查證結果之前，`Szwt` 相關數字應視為「格式正確但尚待確認」，不宜直接作為結論依據。
 
+## Remote Address（遠端連線來源）
+
+`npm run rca` 的 Context 檔案已內建該 Job 的遠端連線位址（來源欄位 `QAPMJOBL.JBIPAF`/`JBIPAD`/`JBIPPT`），用於追查「是哪一台機器/使用者連進來造成這個異常」，尤其對 `QZDASOINIT`/`QZRCSRVS` 這類 ODBC/JDBC 預啟動工作特別有用——這類工作的 Job Name/User 是固定的系統值，看不出實際使用者，只有 Remote Address 能指出真正的來源機器。
+
+- **單一時段模式**（`--time`）：Context 檔案直接顯示該時段的 `Remote Address: <IP>:<Port>`。
+- **全天模式**（省略 `--time`）：Context 檔案新增「遠端連線位址」小節，**按觀測到的相異位址分組**列出出現次數與時間範圍，而非只取第一筆——因為預啟動工作的同一個 Job Number 會被系統重複用於多個不相關的用戶端連線，全天可能出現好幾組完全不同的 IP。
+- 若顯示 `N/A`：代表當下沒有已建立的 socket 連線（`JBIPAF = X'00'`），或這份 `perf_*.json` 是加入此功能前擷取的舊快取（用 `npm run extract ... --forceExtract=true` 重新擷取即可補上）。
+
+## DSPLOG 交叉比對（登入/登出紀錄、真實使用者身分）
+
+`npm run rca` 會自動在 Context 檔案追加「DSPLOG 交叉比對」小節，把 Remote Address 進一步坐實成**真實使用者身分**與完整 Job 生命週期，不需要使用者手動跑 `DSPLOG` 匯出檔——`QAPMJOBL` 只查得到匿名的作業描述使用者（例如 `QZDASOINIT` 固定顯示 `QUSER`），系統歷史紀錄（QHST）裡的 `CPIAD09`（"User X from client Y connected to job..."）才記錄了「哪個真人帳號、從哪台機器」建立了這個連線。
+
+**運作方式**（依優先順序）：
+
+1. **`--dsplog=<path>`**：使用者提供現成的 `DSPLOG OUTPUT(*PRINT)` 純文字匯出檔，腳本用 `scripts/dsplogParser.js` 解析（處理跨分頁斷行等版面問題）。適合離線分析、或目標時間已超出線上 QHST 保留範圍的情況。
+2. **預設（不加任何參數）**：透過 `scripts/historyLogFetcher.js` 對主機發一個**短暫的即時連線**，查詢 `QSYS2.HISTORY_LOG_INFO` SQL Service（`DSPLOG` 的線上等價服務，欄位已結構化，不需文字解析），範圍**自動縮限在該 Job 實際活躍的時段附近**（依效能資料裡這個 Job 出現的時間點推算），而不是像手動 `DSPLOG` 那樣匯出一整天。若初始範圍（±60 分鐘）找不到這個 Job 的結束紀錄（`jobEnd`），會**一小時一小時往外擴張**（±60→±120→±180…），直到找到結束紀錄、範圍已擴到當天全天、或達到上限（12 小時）為止——不會一次跳到整天。
+3. **`--fetchLog=false`**：完全跳過（既不讀檔也不連線），適合純離線模式或不需要這項資訊時。
+
+任何一種來源失敗（連線失敗、找不到檔案、主機版本不支援 `HISTORY_LOG_INFO`）都**不會中斷 RCA**——只是該小節顯示找不到資料，效能數據分析部分照常產出，並提示可改用 `--dsplog=<path>`。
+
+Context 檔案內容包含：真實使用者 + 來源 client IP、Job 生命週期（連線/啟動時間 → 結束時間、總 CPU 秒數、結束碼中文說明）、同一使用者/來源在 ±30 分鐘內的其他連線（用於偵測「互動式 5250 + ODBC/JDBC 成對啟動」這類同一次操作階段的訊號），以及可直接引用的原始 LOG 文字佐證。
+
 ## 其他報告類型
 
 非 Job 中心的報告（每日健康摘要、多日趨勢、磁碟熱點）請參閱 `references/report-catalog.md`。
