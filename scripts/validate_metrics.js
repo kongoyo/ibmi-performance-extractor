@@ -1,9 +1,4 @@
-import {
-  parseArgs,
-  checkNodeVersion,
-  loadServices,
-  loadHostConfig,
-} from "./preflight.js";
+import { runPreflight } from "./preflight.js";
 
 // Color codes for output formatting
 const green = "\x1b[32m";
@@ -88,11 +83,7 @@ const diskUtilBenchmark = [
 
 async function main() {
   console.log(`🔍 執行環境事前點檢...`);
-  checkNodeVersion();
-
-  const args = parseArgs();
-  const { SourceManager } = await loadServices(args);
-  const { hostId, hostConfig } = loadHostConfig(args.host, args);
+  const { args, hostId, hostConfig, SourceManager } = await runPreflight();
   const library = args.lib || hostConfig.library || "KTB";
 
   const manager = SourceManager.getInstance();

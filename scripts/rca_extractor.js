@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { parseArgs, loadHostConfig, resolveDataAndOutputDirs } from "./preflight.js";
+import { resolveDataAndOutputDirs, runPreflight } from "./preflight.js";
 import {
   METRIC_LABELS, jobMatches, resolveJsonPath, resolveContextDir,
   SYSTEM_COMPARABLE_METRICS, computeJobLevelDayMax, summarizeHits,
@@ -214,7 +214,7 @@ function buildFullDayContext(data, args, hostConfig) {
 
 async function main() {
   console.log("🔍 Starting RCA Data Collector...");
-  const args = parseArgs();
+  const { args, hostId, hostConfig } = await runPreflight({ requireServices: false });
 
   if (!args.host || !args.job || !args.date) {
     console.error("❌ 缺少必要參數！必須提供 --host, --job, --date（--time 可省略以進行全天掃描）");
@@ -224,7 +224,7 @@ async function main() {
     process.exit(1);
   }
 
-  const { hostId, hostConfig } = loadHostConfig(args.host, args);
+
   const library = args.lib || hostConfig.library || "QPFRDATA";
   const { dataDir, outDir } = resolveDataAndOutputDirs(hostConfig, hostId, library);
   const contextDir = resolveContextDir(outDir);

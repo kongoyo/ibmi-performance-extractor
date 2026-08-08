@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { parseArgs, loadHostConfig, resolveDataAndOutputDirs } from "./preflight.js";
+import { resolveDataAndOutputDirs, runPreflight } from "./preflight.js";
 import { METRIC_LABELS, resolveContextDir, resolveRangeJsonPath } from "./rcaUtils.js";
 import { THRESHOLDS } from "./reportingThresholds.js";
 
@@ -100,7 +100,7 @@ function buildMarkdown(trends, data, args, hostConfig) {
 
 async function main() {
   console.log("🔍 Starting Trend Report...");
-  const args = parseArgs();
+  const { args, hostId, hostConfig } = await runPreflight({ requireServices: false });
 
   if (!args.host || !args.dateFrom || !args.dateTo) {
     console.error("❌ 缺少必要參數！必須提供 --host, --dateFrom, --dateTo");
@@ -109,7 +109,7 @@ async function main() {
     process.exit(1);
   }
 
-  const { hostId, hostConfig } = loadHostConfig(args.host, args);
+
   const library = args.lib || hostConfig.library || "QPFRDATA";
   const { dataDir, outDir } = resolveDataAndOutputDirs(hostConfig, hostId, library);
   const contextDir = resolveContextDir(outDir);

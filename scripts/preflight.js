@@ -1,21 +1,19 @@
 /**
  * Shared preflight checks for the IBM i performance extractor scripts.
  *
- * Resolution convention:
- * - hosts_config.json and generate_report.py travel WITH the skill package,
- *   so they resolve relative to this file's location (SKILL_ROOT) — this
- *   keeps working no matter where the skill is dropped (standalone folder,
- *   or nested under a project's .agents/skills/ibmi-performance-extractor/).
- * - packages/server/dist/public/services.js belongs to the consuming
- *   project, so it resolves relative to the current working directory
- *   (the caller is expected to run the script from the project root).
- * Both are overridable via CLI flags / env vars for edge cases.
+ * Responsibilities (single-concern):
+ *   - Environment guards: Node version, Python availability, SourceManager loading
+ *   - Credential management: hosts_config.json loading + DPAPI encryption
+ *
+ * Path resolution has been extracted to pathResolver.js. SKILL_ROOT and
+ * resolveDataAndOutputDirs are re-exported here for backward compatibility
+ * so existing callers don't need to change their import statements.
  */
 import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import { createRequire } from "module";
-import { fileURLToPath, pathToFileURL } from "url";
+import { pathToFileURL } from "url";
 import {
   PROTECTED_HOST_FIELDS,
   isWindows,
@@ -24,14 +22,13 @@ import {
   decryptValue,
 } from "./credentialCrypto.js";
 
+// Re-exported from pathResolver.js for backward compatibility.
+export { SKILL_ROOT, resolveDataAndOutputDirs } from "./pathResolver.js";
+import { SKILL_ROOT } from "./pathResolver.js";
+
 const RED = "\x1b[31m";
 const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
-
-export const SKILL_ROOT = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
 
 function fail(message, hint) {
   console.error(`\n${RED}❌ [環境檢查失敗]${RESET} ${message}`);
@@ -260,42 +257,48 @@ export function loadHostConfig(hostIdArg, args = {}) {
   return { hostId, hostConfig, configPath: configPath };
 }
 
-/**
- * Substitutes {host}/{hostId}/{lib}/{date} template tokens in an outputDirs
- * entry. {YOUR_IBMI_HOST_IP_OR_DNS} is accepted as an alias of {host} so the
- * placeholder text in hosts_config.json.example can be used verbatim.
- */
-function substituteTokens(str, hostId, hostConfig, library = "QPFRDATA", dateStr = "UNKNOWN") {
-  const safeDate = dateStr.replace(/\//g, "-");
-  return str
-    .replace(/\{host\}/g, hostConfig.host)
-    .replace(/\{YOUR_IBMI_HOST_IP_OR_DNS\}/g, hostConfig.host)
-    .replace(/\{hostId\}/g, hostId)
-    .replace(/\{lib\}/g, library)
-    .replace(/\{date\}/g, safeDate);
-}
+// resolveDataAndOutputDirs is implemented in pathResolver.js and re-exported
+// at the top of this file for backward compatibility.
 
 /**
- * Resolves the report/JSON output directories for a host. Relative entries
- * resolve against SKILL_ROOT (so the default stays self-contained inside
- * the skill package); absolute entries pass through unchanged.
+ * Aggregated preflight: runs all environment guards in the correct order and
+ * returns everything callers need, so they don't have to sequence the steps
+ * themselves.
  *
- * Directories are keyed by {hostId}/{lib} only — NOT by date. A library's
- * extracted data is one continuous pool regardless of which date window a
- * given run covers, so date/date-range is encoded in the filename instead
- * (e.g. perf_0714.json vs perf_0712_to_0714.json) rather than the folder;
- * that way a single-date run and a range run covering the same day can
- * never collide/overwrite each other on disk.
+ * 守衛順序（固定，不對外暴露）：
+ *   1. checkNodeVersion
+ *   2. checkPython（可選，requirePython: true 時才執行）
+ *   3. loadServices（可選，requireServices: true 時才執行）
+ *   4. loadHostConfig
+ *
+ * 錯誤模式：任一守衛失敗 → 印出中文導引 → process.exit(1)
+ *
+ * @param {object}  [options]
+ * @param {boolean} [options.requireServices=true]
+ *   設為 false 跳過 SourceManager 載入（適用於只讀取本地 JSON 的腳本）。
+ * @param {boolean} [options.requirePython=false]
+ *   設為 true 執行 Python 可用性守衛（適用於會呼叫 generate_report.py 的腳本）。
+ * @returns {Promise<{
+ *   args: object,
+ *   hostId: string,
+ *   hostConfig: object,
+ *   configPath: string,
+ *   SourceManager: any|null,
+ *   pythonCmd: string|null
+ * }>}
  */
-export function resolveDataAndOutputDirs(hostConfig, hostId, library) {
-  const dataRaw = `data/{hostId}/{lib}/`;
-  const outRaw = `outputs/{hostId}/{lib}/`;
+export async function runPreflight({ requireServices = true, requirePython = false } = {}) {
+  checkNodeVersion();
 
-  const dataDir = path.join(SKILL_ROOT, substituteTokens(dataRaw, hostId, hostConfig, library));
-  const outDir = path.join(SKILL_ROOT, substituteTokens(outRaw, hostId, hostConfig, library));
+  const pythonCmd = requirePython ? checkPython() : null;
 
-  fs.mkdirSync(dataDir, { recursive: true });
-  fs.mkdirSync(outDir, { recursive: true });
+  const args = parseArgs();
 
-  return { dataDir, outDir };
+  const SourceManager = requireServices
+    ? (await loadServices(args)).SourceManager
+    : null;
+
+  const { hostId, hostConfig, configPath } = loadHostConfig(args.host, args);
+
+  return { args, hostId, hostConfig, configPath, SourceManager, pythonCmd };
 }

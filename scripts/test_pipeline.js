@@ -3,12 +3,8 @@ import path from "path";
 import { execSync } from "child_process";
 import {
   SKILL_ROOT,
-  parseArgs,
-  checkNodeVersion,
-  checkPython,
-  loadServices,
-  loadHostConfig,
   resolveDataAndOutputDirs,
+  runPreflight,
 } from "./preflight.js";
 import { checkSchema, checkDataSanity } from "./healthcheck.js";
 import { PerformanceDataExtractor } from "./extractor.js";
@@ -40,12 +36,8 @@ async function main() {
   console.log(`🚀 Starting Optimized Performance Data Extraction Pipeline...`);
 
   console.log(`\n🔍 執行環境事前點檢...`);
-  checkNodeVersion();
-  const pythonCmd = checkPython();
-
-  const args = parseArgs();
-  const { SourceManager } = await loadServices(args);
-  const { hostId, hostConfig, configPath } = loadHostConfig(args.host, args);
+  const { args, hostId, hostConfig, configPath, SourceManager, pythonCmd } =
+    await runPreflight({ requirePython: true });
   const library = args.lib || hostConfig.library || "QPFRDATA";
 
   const hasSingleDate = !!args.date;

@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { parseArgs, loadHostConfig, resolveDataAndOutputDirs } from "./preflight.js";
+import { resolveDataAndOutputDirs, runPreflight } from "./preflight.js";
 import { resolveJsonPath, resolveContextDir, summarizeHits } from "./rcaUtils.js";
 
 // Only the top N disk units get full detail; a busy system can have dozens of
@@ -117,7 +117,7 @@ function buildMarkdown(ranking, args, hostConfig) {
 
 async function main() {
   console.log("🔍 Starting Disk Hot-Spot Scan...");
-  const args = parseArgs();
+  const { args, hostId, hostConfig } = await runPreflight({ requireServices: false });
 
   if (!args.host || !args.date) {
     console.error("❌ 缺少必要參數！必須提供 --host, --date");
@@ -126,7 +126,7 @@ async function main() {
     process.exit(1);
   }
 
-  const { hostId, hostConfig } = loadHostConfig(args.host, args);
+
   const library = args.lib || hostConfig.library || "QPFRDATA";
   const { dataDir, outDir } = resolveDataAndOutputDirs(hostConfig, hostId, library);
   const contextDir = resolveContextDir(outDir);
