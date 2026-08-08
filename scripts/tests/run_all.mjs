@@ -10,3 +10,5 @@ import "../tests/jobRanker.test.js";
 import "../tests/dsplogParser.test.js";
 import "../tests/historyLogFetcher.test.js";
 import "../tests/generateReport.test.js";
+import "../tests/insightsEngine.test.js";
+import "../tests/templates.test.js";

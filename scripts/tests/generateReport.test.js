@@ -1,5 +1,5 @@
 import { safeSubstitute, formatVal, parseCliArgs } from "../reporting/generateReport.js";
-import { calculateStats } from "../reporting/dataProcessor.js";
+import { calculateStats, getPanelHeaders } from "../reporting/dataProcessor.js";
 
 const green = "\x1b[32m";
 const red = "\x1b[31m";
@@ -120,6 +120,28 @@ const expectedParsed = {
   rca: true,
 };
 assertDeepEqual("parseCliArgs parses space-separated, equal-separated, and flag arguments", parsed, expectedParsed);
+
+// ----------------------------------------------------
+// Test 5: getPanelHeaders
+// ----------------------------------------------------
+const panelCases = [
+  ["Rsp", "回應時間", "實體 I/O 次數"],
+  ["Count", "交易次數", "平均回應時間"],
+  ["Dsk", "I/O 次數", "CPU 耗時"],
+  ["Usr", "分頁缺失", "CPU 耗時"],
+  ["Tot", "CPU 耗時", "總 I/O 次數"],
+  ["Int", "CPU 耗時", "交易回應時間"],
+  ["Bch", "CPU 耗時", "實體 I/O 次數"],
+];
+for (const [key, val_header, last_header] of panelCases) {
+  const headers = getPanelHeaders(key);
+  assertEqual(`getPanelHeaders(${key}) val_header`, headers.val_header, val_header);
+  assertEqual(`getPanelHeaders(${key}) last_header`, headers.last_header, last_header);
+}
+const fallbackHeaders = getPanelHeaders("Unknown");
+assertEqual("getPanelHeaders fallback val_header", fallbackHeaders.val_header, "數值 1");
+assertEqual("getPanelHeaders fallback last_header", fallbackHeaders.last_header, "數值 2");
+assertEqual("getPanelHeaders fallback val_unit", fallbackHeaders.val_unit, "");
 
 console.log(`\n📊 Summary: ${passedTests} passed, ${failedTests} failed`);
 if (failedTests > 0) {
