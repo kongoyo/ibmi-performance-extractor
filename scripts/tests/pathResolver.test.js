@@ -38,8 +38,8 @@ const TEST_HOST = "9.9.9.9";
 const TEST_LIB = "__UNITTEST_LIB__";
 
 function cleanup() {
-  fs.rmSync(path.join(SKILL_ROOT, "data", TEST_HOST), { recursive: true, force: true });
-  fs.rmSync(path.join(SKILL_ROOT, "outputs", TEST_HOST), { recursive: true, force: true });
+  fs.rmSync(path.join(SKILL_ROOT, "data", TEST_HOST_ID), { recursive: true, force: true });
+  fs.rmSync(path.join(SKILL_ROOT, "outputs", TEST_HOST_ID), { recursive: true, force: true });
 }
 
 console.log(`📋 [pathResolver.test.js] Path resolution unit tests`);
@@ -52,7 +52,7 @@ try {
   assertEqual("SKILL_ROOT resolves to the project root", SKILL_ROOT, expectedRoot);
 
   // ----------------------------------------------------
-  // Directory layout: keyed by hostConfig.host (not hostId), per
+  // Directory layout: keyed by hostId (not hostConfig.host), per
   // references/output-conventions.md.
   // ----------------------------------------------------
   cleanup();
@@ -60,14 +60,14 @@ try {
   const { dataDir, outDir } = resolveDataAndOutputDirs(hostConfig, TEST_HOST_ID, TEST_LIB);
 
   assertEqual(
-    "dataDir is keyed by hostConfig.host, not hostId",
+    "dataDir is keyed by hostId, not hostConfig.host",
     dataDir,
-    path.join(SKILL_ROOT, "data", TEST_HOST, TEST_LIB) + path.sep,
+    path.join(SKILL_ROOT, "data", TEST_HOST_ID, TEST_LIB) + path.sep,
   );
   assertEqual(
-    "outDir is keyed by hostConfig.host, not hostId",
+    "outDir is keyed by hostId, not hostConfig.host",
     outDir,
-    path.join(SKILL_ROOT, "outputs", TEST_HOST, TEST_LIB) + path.sep,
+    path.join(SKILL_ROOT, "outputs", TEST_HOST_ID, TEST_LIB) + path.sep,
   );
   assertEqual("dataDir is created on disk", fs.existsSync(dataDir), true);
   assertEqual("outDir is created on disk", fs.existsSync(outDir), true);
@@ -79,7 +79,7 @@ try {
   assertEqual(
     "explicit library argument overrides hostConfig.library",
     explicit.dataDir,
-    path.join(SKILL_ROOT, "data", TEST_HOST, "EXPLICIT_LIB") + path.sep,
+    path.join(SKILL_ROOT, "data", TEST_HOST_ID, "EXPLICIT_LIB") + path.sep,
   );
 
   // ----------------------------------------------------
@@ -89,7 +89,7 @@ try {
   assertEqual(
     "falls back to hostConfig.library when library arg is omitted",
     fallback.dataDir,
-    path.join(SKILL_ROOT, "data", TEST_HOST, "DEFAULT_LIB") + path.sep,
+    path.join(SKILL_ROOT, "data", TEST_HOST_ID, "DEFAULT_LIB") + path.sep,
   );
 
   // ----------------------------------------------------

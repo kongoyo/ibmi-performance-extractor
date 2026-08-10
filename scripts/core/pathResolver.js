@@ -34,9 +34,15 @@ function substituteTokens(str, hostId, hostConfig, library) {
 /**
  * Resolves the data/ and outputs/ directories for a given host + library.
  *
- * Directory layout (keyed by {host}/{lib} only, NOT by date):
- *   data/<Host IP>/<Library>/      ← raw extracted JSON (source of truth)
- *   outputs/<Host IP>/<Library>/   ← HTML reports + AI RCA reports
+ * Directory layout (keyed by {hostId}/{lib} only, NOT by date):
+ *   data/<HostId>/<Library>/      ← raw extracted JSON (source of truth)
+ *   outputs/<HostId>/<Library>/   ← HTML reports + AI RCA reports
+ *
+ * Keyed by hostId (the hosts_config.json key, e.g. "clark75") rather than
+ * the host's IP/DNS so directories stay human-readable. Provenance safety
+ * relies on every extraction dialing the IP recorded in hosts_config.json
+ * for that hostId at run time — the live connection is the confirmation
+ * that the data actually came from that host.
  *
  * Date range is encoded in the *filename* (e.g. perf_0714.json vs
  * perf_0712_to_0714.json) so single-day and range runs never collide.
@@ -54,8 +60,8 @@ export function resolveDataAndOutputDirs(hostConfig, hostId, library) {
     );
   }
 
-  const dataRaw = `data/{host}/{lib}/`;
-  const outRaw = `outputs/{host}/{lib}/`;
+  const dataRaw = `data/{hostId}/{lib}/`;
+  const outRaw = `outputs/{hostId}/{lib}/`;
 
   const dataDir = path.join(SKILL_ROOT, substituteTokens(dataRaw, hostId, hostConfig, resolvedLib));
   const outDir = path.join(SKILL_ROOT, substituteTokens(outRaw, hostId, hostConfig, resolvedLib));

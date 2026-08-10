@@ -206,7 +206,7 @@ export function resolveLibraryAndJsonPath(hostConfig, hostId, args, dateSpec) {
     return { library: primaryLibrary, ...primaryDirs, jsonPath: primaryJsonPath, triedLibraries: [primaryLibrary], autoSwitched: false };
   }
 
-  const hostDataRoot = path.join(SKILL_ROOT, "data", hostConfig.host);
+  const hostDataRoot = path.join(SKILL_ROOT, "data", hostId);
   const siblingLibraries = fs.existsSync(hostDataRoot)
     ? fs.readdirSync(hostDataRoot, { withFileTypes: true })
         .filter((d) => d.isDirectory() && d.name !== primaryLibrary)

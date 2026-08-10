@@ -45,9 +45,11 @@ outputs/
 
 ## `<主機ID>` 的取值規則
 
-`<主機ID>` 使用 `config/hosts_config.json` 中的 `host` 欄位值（即主機的 IP 或 DNS 名稱），不是 JSON 的 key。
+`<主機ID>` 使用 `config/hosts_config.json` 的 JSON key（例如 `clark75`），不是 `host` 欄位值（IP/DNS）。這是為了讓目錄名稱人類可讀好辨識。
 
-範例：`hosts_config.json` 中 key 為 `<HostName>`，`host` 欄位為 `<Host IP>`，則目錄為 `data/<Host IP>/`。
+範例：`hosts_config.json` 中 key 為 `<HostName>`、`host` 欄位為 `<Host IP>`，則目錄為 `data/<HostName>/`。
+
+**資料溯源（provenance）安全性**：目錄鍵值改用 hostId 而非 IP 後，理論上存在風險——若同一物理主機被登記成兩個不同的 hostId、或某個 hostId 事後被改指到另一台實體主機，快取資料夾可能對應到錯誤或不一致的機器。這個風險由**每次即時擷取都必定連線到當下設定檔中該 hostId 對應的 IP**來把關：擷取當下，資料的來源機器就是連線目標本身，不存在歧義；只有離線分析（讀取既有 `data/<主機ID>/` 快取）才單純信任目錄名稱，而這些快取本身正是先前已確認過的擷取結果。若 `hosts_config.json` 中同一 hostId 的 `host` 欄位曾經變更過所指向的實體主機，需自行注意舊快取可能與新主機不對應。
 
 ---
 
